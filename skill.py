@@ -1,96 +1,281 @@
 # skill.py
-# 战斗模拟器 v12 - 技能定义模块
-# 集中管理怪物和玩家的技能数据
+# 战斗模拟器 v14 - 技能模块化管理中心 (修正版)
+# 所有技能的定义和执行逻辑都在这里，方便扩展和管理
 
-# ================= 怪物技能库 =================
-MONSTER_SKILLS = {
-    # 通用基础技能
-    "basic_attack": {"type": "damage", "multiplier": 1.0, "desc": "普通攻击"},
-    "heavy_strike": {"type": "damage", "multiplier": 1.5, "desc": "蓄力重击"},
-    "heal": {"type": "heal", "amount_ratio": 0.2, "desc": "自我治愈"},
-    "shield": {"type": "buff", "stat": "defense", "value": 15, "duration": 2, "desc": "开启护盾"},
-    "fireball": {"type": "damage", "multiplier": 1.8, "desc": "火焰球"},
-    "cry": {"type": "debuff", "stat": "attack", "ratio": 0.8, "desc": "嚎叫 (降低敌方攻击)"},
-    "berserk": {"type": "damage", "multiplier": 2.0, "desc": "狂暴一击"},
+import random
+
+# ==============================================================================
+# 1. 技能效果类 (Skill Effect Classes)
+# ==============================================================================
+
+class BaseSkillEffect:
+    """技能效果的基类"""
+    def __init__(self, name, desc, cost=0):
+        self.name = name
+        self.desc = desc
+        self.cost = cost
+
+    def execute(self, caster, targets, params):
+        raise NotImplementedError
+
+class AttackEffect(BaseSkillEffect):
+    """单体/群体攻击效果"""
+    def __init__(self, name, desc, multiplier=1.0, variance=0, is_crit=False, crit_mult=1.5):
+        super().__init__(name, desc)
+        self.multiplier = multiplier
+        self.variance = variance
+        self.is_crit = is_crit
+        self.crit_mult = crit_mult
+
+    def execute(self, caster, targets, params):
+        logs = []
+        for target in targets:
+            if not target.is_alive():
+                continue
+            
+            base_dmg = caster.atk * self.multiplier
+            final_dmg = int(base_dmg + random.randint(-self.variance, self.variance))
+            
+            is_crit = False
+            if self.is_crit or random.random() < 0.1:
+                final_dmg = int(final_dmg * self.crit_mult)
+                is_crit = True
+            
+            result = target.take_damage(final_dmg)
+            
+            log_msg = f"   💥 {caster.name} 对 {target.name} 造成了 {result['final_dmg']} 点伤害!"
+            if is_crit:
+                log_msg += " (暴击!)"
+            logs.append(log_msg)
+            
+            if not target.is_alive():
+                logs.append(f"   💀 {target.name} 倒下了...")
+        return logs
+
+class HealEffect(BaseSkillEffect):
+    """治疗/恢复效果"""
+    def __init__(self, name, desc, amount=0, percent=0.0):
+        super().__init__(name, desc)
+        self.amount = amount
+        self.percent = percent
+
+    def execute(self, caster, targets, params):
+        logs = []
+        for target in targets:
+            if not target.is_alive():
+                continue
+            
+            heal_val = self.amount
+            if self.percent > 0:
+                heal_val = int(target.max_hp * self.percent)
+            
+            old_hp = target.hp
+            target.hp = min(target.max_hp, target.hp + heal_val)
+            actual_heal = target.hp - old_hp
+            
+            logs.append(f"   💚 {target.name} 恢复了 {actual_heal} HP！")
+        return logs
+
+class BuffEffect(BaseSkillEffect):
+    """增益效果 (对自己或队友)"""
+    def __init__(self, name, desc, stat="atk", value=0, duration=2, icon="⬆️"):
+        super().__init__(name, desc)
+        self.stat = stat
+        self.value = value
+        self.duration = duration
+        self.icon = icon
+
+    def execute(self, caster, targets, params):
+        logs = []
+        for target in targets:
+            if not target.is_alive():
+                continue
+            
+            target.add_status_effect(self.icon, self.name, self.duration, f"{self.stat}_up", self.value)
+            logs.append(f"   ✨ {target.name} 获得了【{self.name}】！({self.stat}提升 {self.value}, 持续 {self.duration} 回合)")
+        return logs
+
+class DebuffEffect(BaseSkillEffect):
+    """减益效果 (对敌人)"""
+    def __init__(self, name, desc, stat="atk", value=0, duration=2, icon="⬇️"):
+        super().__init__(name, desc)
+        self.stat = stat
+        self.value = value
+        self.duration = duration
+        self.icon = icon
+
+    def execute(self, caster, targets, params):
+        logs = []
+        for target in targets:
+            if not target.is_alive():
+                continue
+            
+            target.add_status_effect(self.icon, self.name, self.duration, f"{self.stat}_down", self.value)
+            logs.append(f"   ⚠️ {target.name} 受到了【{self.name}】！({self.stat}降低 {self.value}, 持续 {self.duration} 回合)")
+        return logs
+
+class StunEffect(BaseSkillEffect):
+    """眩晕效果"""
+    def __init__(self, name, desc, chance=1.0):
+        super().__init__(name, desc)
+        self.chance = chance
+
+    def execute(self, caster, targets, params):
+        logs = []
+        for target in targets:
+            if not target.is_alive():
+                continue
+            
+            if random.random() < self.chance:
+                target.is_stunned = True
+                logs.append(f"   💫 {target.name} 被眩晕了！无法行动！")
+            else:
+                logs.append(f"   ❌ {target.name} 抵抗了眩晕！")
+        return logs
+
+class SelfHealEffect(BaseSkillEffect):
+    """自我恢复效果 (针对怪物)"""
+    def __init__(self, name, desc, amount=0, percent=0.0):
+        super().__init__(name, desc)
+        self.amount = amount
+        self.percent = percent
+
+    def execute(self, caster, targets, params):
+        logs = []
+        heal_val = self.amount
+        if self.percent > 0:
+            heal_val = int(caster.max_hp * self.percent)
+        
+        old_hp = caster.hp
+        caster.hp = min(caster.max_hp, caster.hp + heal_val)
+        actual_heal = caster.hp - old_hp
+        logs.append(f"   🧛‍♂️ {caster.name} 自我恢复了 {heal_val} HP！")
+        return logs
+
+class LifestealEffect(BaseSkillEffect):
+    """吸血效果"""
+    def __init__(self, name, desc, multiplier=1.5, ratio=0.5):
+        super().__init__(name, desc)
+        self.multiplier = multiplier
+        self.ratio = ratio
+
+    def execute(self, caster, targets, params):
+        logs = []
+        target = targets[0] if targets else None
+        if not target or not target.is_alive():
+            return logs
+
+        base_dmg = caster.atk * self.multiplier
+        final_dmg = int(base_dmg + random.randint(-5, 5))
+        result = target.take_damage(final_dmg)
+        
+        heal_val = int(result['final_dmg'] * self.ratio)
+        caster.hp = min(caster.max_hp, caster.hp + heal_val)
+        
+        logs.append(f"   🩸 {caster.name} 吸取了 {result['final_dmg']} 点生命，恢复了 {heal_val} HP！")
+        if not target.is_alive():
+            logs.append(f"   💀 {target.name} 倒下了...")
+        return logs
+
+class TrapEffect(BaseSkillEffect):
+    """陷阱/束缚效果"""
+    def __init__(self, name, desc):
+        super().__init__(name, desc)
+
+    def execute(self, caster, targets, params):
+        logs = []
+        alive_targets = [t for t in targets if t.is_alive()]
+        if alive_targets:
+            target = random.choice(alive_targets)
+            target.is_stunned = True
+            logs.append(f"   🕸️ {target.name} 被 {caster.name} 的【{self.name}】束缚住了！")
+        return logs
+
+class CleanseEffect(BaseSkillEffect):
+    """清除增益效果"""
+    def __init__(self, name, desc):
+        super().__init__(name, desc)
+
+    def execute(self, caster, targets, params):
+        logs = []
+        for target in targets:
+            if not target.is_alive():
+                continue
+            
+            if hasattr(target, 'status_effects') and target.status_effects:
+                target.status_effects = []
+                logs.append(f"   ✨ {target.name} 的所有增益效果被【{self.name}】清除了！")
+            else:
+                logs.append(f"   ✨ {target.name} 没有增益效果可以被清除。")
+        return logs
+
+# ==============================================================================
+# 2. 技能注册表 (Skill Registry)
+# ==============================================================================
+
+SKILL_REGISTRY = {
+    # --- 基础攻击 ---
+    "basic_attack": AttackEffect("普通攻击", "进行了一次普通的攻击", multiplier=1.0, variance=5),
+    "heavy_strike": AttackEffect("蓄力重击", "发动了强力的一击", multiplier=1.5, variance=10),
     
-    # --- 独特机制技能 ---
-    "life_steal": {"type": "lifesteal", "ratio": 0.5, "desc": "生命汲取 (吸取50%伤害的生命)"},
-    "calculation": {"type": "crit_damage", "multiplier": 2.5, "chance": 0.3, "desc": "精确计算 (30%几率造成2.5倍暴击)"},
+    # --- 怪物特有技能 ---
+    "fireball": AttackEffect("火焰球", "发射了灼热的火焰球", multiplier=1.8, variance=5),
+    "shield": BuffEffect("开启护盾", "展开了防御护盾", stat="defense", value=15, duration=2, icon="🛡️"),
+    "cry": DebuffEffect("嚎叫 (降低敌方攻击)", "发出了令人胆寒的嚎叫", stat="atk", value=0.2, duration=2, icon="😱"),
+    "berserk": AttackEffect("狂暴一击", "进入了狂暴状态", multiplier=2.0, variance=10),
+    "auto_repair": SelfHealEffect("自我修复", "启动了紧急维修程序", amount=20),
+    "emp_pulse": DebuffEffect("电磁脉冲 (降低全队防御)", "释放了EMP干扰波", stat="defense", value=0.3, duration=2, icon="⚡"),
+    "web_trap": TrapEffect("蛛网束缚", "布置了致命的蛛网陷阱"),
+    "earthquake": AttackEffect("地震术", "引发了剧烈的地震", multiplier=0.8, variance=10),
     
-    # 新增独特技能
-    "web_trap": {"type": "trap", "duration": 1, "desc": "蛛网束缚 (使一名玩家无法行动)"},
-    "shell_defense": {"type": "buff", "stat": "defense_reflect", "value": 20, "duration": 2, "desc": "缩壳防御 (高防并反弹少量伤害)"},
-    "phase_shift": {"type": "buff", "stat": "evade_next", "desc": "相位闪烁 (闪避下一次攻击)"},
-    "earthquake": {"type": "aoe_damage", "multiplier": 0.8, "desc": "地震术 (对全员造成中等伤害)"},
-    "emp_pulse": {"type": "debuff_all_stat", "stat": "defense", "ratio": 0.7, "desc": "电磁脉冲 (降低全队防御)"},
-    "dragon_breath": {"type": "aoe_damage", "multiplier": 1.5, "desc": "龙息吐息 (对全员造成高额火焰伤害)"},
-    "void_collapse": {"type": "cleanse_enemy", "desc": "视界崩坏 (清除我方增益效果)"},
-    "acid_spit": {"type": "damage", "multiplier": 1.2, "desc": "酸液喷射"},
-    "vine_lash": {"type": "aoe_damage", "multiplier": 0.6, "desc": "藤蔓横扫"},
-    "static_discharge": {"type": "aoe_damage", "multiplier": 0.5, "desc": "静电释放"},
-    "bone_shield": {"type": "buff", "stat": "defense", "value": 25, "duration": 3, "desc": "骨墙加固"},
-    "throw_rock": {"type": "damage", "multiplier": 1.3, "desc": "投掷石块"},
-    "charge": {"type": "damage", "multiplier": 2.0, "desc": "冲撞"},
+    # --- 补充遗漏的特色技能 ---
+    "slime_bounce": AttackEffect("弹跳撞击", "弹跳着发起攻击", multiplier=0.8, variance=3),
+    "acid_spit": AttackEffect("酸液喷射", "喷出了腐蚀性酸液", multiplier=1.2, variance=5),
+    "throw_rock": AttackEffect("投掷石块", "投掷了尖锐的石块", multiplier=1.3, variance=8),
+    "horn_charge": AttackEffect("角撞", "用犄角发起冲锋", multiplier=1.1, variance=0),
+    "charge": AttackEffect("冲撞", "向前猛冲撞击", multiplier=2.0, variance=5),
+    "vine_lash": AttackEffect("藤蔓横扫", "甩动藤蔓进行攻击", multiplier=0.6, variance=5),
+    "bite": AttackEffect("撕咬", "张开大口咬住敌人", multiplier=1.2, variance=3),
+    "scratch": AttackEffect("猫爪乱抓", "用利爪快速抓挠", multiplier=1.0, variance=5),
+    "phase_shift": BuffEffect("相位闪烁", "融入阴影中闪避下次攻击", stat="evade", value=1, duration=1, icon="👻"),
+    "crush_claw": AttackEffect("巨钳粉碎", "用巨钳狠狠夹碎敌人", multiplier=1.3, variance=0),
+    "shell_defense": BuffEffect("缩壳防御", "缩进壳里大幅提升防御", stat="defense", value=20, duration=2, icon="🐚"),
+    "emp_hammer": AttackEffect("电磁重锤", "用电磁脉冲锤猛烈砸击", multiplier=1.3, variance=5),
+    "shadow_kick": AttackEffect("影踢", "从阴影中突袭踢击", multiplier=1.1, variance=0),
+    "acid_bite": AttackEffect("酸液咬合", "用酸液腐蚀的牙齿咬合", multiplier=1.0, variance=5),
+    "heavy_stomp": AttackEffect("重踏", "沉重地踩踏地面", multiplier=1.2, variance=10),
+    "dragon_wing_slap": AttackEffect("龙翼拍击", "用巨大的龙翼横扫", multiplier=1.5, variance=5),
+    "dragon_breath": AttackEffect("龙息吐息", "喷出毁灭性的龙息", multiplier=1.5, variance=10),
+    "abyssal_gaze": AttackEffect("深渊凝视", "用空洞的眼神注视敌人", multiplier=1.2, variance=5),
+    "void_collapse": CleanseEffect("视界崩坏", "清除我方增益效果"),
+    "red_pen_mark": AttackEffect("红笔批改", "用红笔精准批注弱点", multiplier=1.2, variance=0),
+    "calculation": AttackEffect("精确计算", "经过精密计算后的攻击", multiplier=2.5, variance=0, is_crit=True, crit_mult=2.0), # Simplified to crit attack
+    "high_speed_calculation": AttackEffect("高速计算", "高速运算后的连续打击", multiplier=2.5, variance=0, is_crit=True, crit_mult=2.0),
+    "life_steal": LifestealEffect("生命汲取", "吸取敌人的生命力", multiplier=1.5, ratio=0.5),
     
-    # --- 新增特色技能 ---
-    "heavy_stomp": {"type": "damage", "multiplier": 1.2, "desc": "重踏"},
-    "shadow_kick": {"type": "damage", "multiplier": 1.1, "desc": "影踢"},
-    "acid_bite": {"type": "damage", "multiplier": 1.0, "desc": "酸液咬合"},
-    "dragon_wing_slap": {"type": "damage", "multiplier": 1.5, "desc": "龙翼拍击"},
-    "abyssal_gaze": {"type": "damage", "multiplier": 1.2, "desc": "深渊凝视"},
-    "red_pen_mark": {"type": "damage", "multiplier": 1.2, "desc": "红笔批改"},
-    "high_speed_calculation": {"type": "crit_damage", "multiplier": 2.5, "chance": 0.3, "desc": "高速计算"},
-    "crush_claw": {"type": "damage", "multiplier": 1.3, "desc": "巨钳粉碎"},
-    "scratch": {"type": "damage", "multiplier": 1.0, "desc": "猫爪乱抓"},
-    "bite": {"type": "damage", "multiplier": 1.2, "desc": "撕咬"},
-    "slime_bounce": {"type": "damage", "multiplier": 0.8, "desc": "弹跳撞击"},
-    "horn_charge": {"type": "damage", "multiplier": 1.1, "desc": "角撞"},
-    "emp_hammer": {"type": "damage", "multiplier": 1.3, "desc": "电磁重锤"},
+    # --- 玩家技能 ---
+    "alice_charge": BaseSkillEffect("光啊！", "正在积蓄光之剑的能量", cost=0),
+    "alice_ex": AttackEffect("世界的法则即将崩坏！光哟！！！", "释放出巨大的电磁炮", multiplier=5.91, variance=0, is_crit=True, crit_mult=2.0),
+    "alice_physical": AttackEffect("物理攻击", "挥舞光之剑进行物理打击", multiplier=1.0, variance=5),
     
-    # --- 铁皮傀儡专属技能 ---
-    "auto_repair": {"type": "special", "desc": "自我修复"},
+    "yuzu_super": StunEffect("通关指令·改", "发动了必杀技，造成了眩晕", chance=0.4),
+    "yuzu_normal": AttackEffect("普通攻击", "进行了普通攻击", multiplier=1.0, variance=0),
+    
+    "midori_heal": HealEffect("艺术润色", "画出了治愈的颜料", amount=25),
+    
+    # --- 修正桃井的技能 ---
+    "momoi_debuff_atk": DebuffEffect("剧情杀 (降低攻击)", "剧本里写着BOSS的攻击下降了", stat="atk", value=0.3, duration=2, icon="📉"),
+    "momoi_debuff_def": DebuffEffect("剧情杀 (降低防御)", "剧本里写着BOSS的防御下降了", stat="defense", value=0.3, duration=2, icon="📉"),
+    "momoi_debuff": DebuffEffect("剧情杀 (Debuff)", "剧本里写着BOSS的状态变差了", stat="atk", value=0.3, duration=2, icon="📉"),
+    "momoi_buff": BuffEffect("剧情杀 (Buff)", "剧本里写着大家获得了力量", stat="atk", value=0.2, duration=2, icon="⚔️"),
 }
 
-# ================= 玩家技能元数据 =================
-# 包含玩家技能的具体数值参数
-PLAYER_SKILLS_META = {
-    "alice": {
-        "charge": {
-            "desc": "光啊！", 
-            "cost": 0, 
-            "gain_energy": 1,
-            "detail": "积攒光之能量，为释放终极必杀技做准备。"
-        },
-        "ex": {
-            "desc": "世界的法则即将崩坏！光哟！！！" ,
-            "base_multiplier": 5.91,
-            "energy_bonus": 0.5,
-            "crit_chance": 0.15,
-            "crit_multiplier": 2.0,
-            "detail": "消耗所有光之能量，释放出毁灭性的光之冲击！"
-        },
-        "physical": {
-            "desc": "物理攻击",
-            "variance": 5,
-            "crit_chance": 0.1,
-            "crit_multiplier": 1.5,
-            "detail": "使用光之剑进行普通的物理斩击。"
-        }
-    },
-    "yuzu": {
-        "normal": {"desc": "普通攻击"},
-        "super": {
-            "desc": "通关指令·改",
-            "stun_chance": 0.4,
-            "once_per_battle": True
-        }
-    },
-    "midori": {
-        "heal": {"desc": "艺术润色", "min_heal": 20, "max_heal": 30}
-    },
-    "momoi": {
-        "normal": {"desc": "普通攻击"},
-        "debuff": {"desc": "剧情杀 (Debuff)", "chance": 0.3},
-        "buff": {"desc": "剧情杀 (Buff)", "chance": 0.4}
-    }
-}
+# ==============================================================================
+# 3. 辅助函数
+# ==============================================================================
+
+def get_skill(skill_id):
+    """从注册表中获取技能实例"""
+    if skill_id in SKILL_REGISTRY:
+        return SKILL_REGISTRY[skill_id]
+    return None

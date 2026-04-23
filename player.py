@@ -1,8 +1,8 @@
 # player.py
-# 战斗模拟器 v13 - 玩家数据与行为逻辑模块 (含血条、增益图标、详细技能说明、交互优化)
+# 战斗模拟器 v14 - 玩家数据与行为逻辑模块 (模块化重构版)
 
 import random
-from skill import PLAYER_SKILLS_META
+from skill import SKILL_REGISTRY, get_skill, AttackEffect, BuffEffect, DebuffEffect, StunEffect, HealEffect
 
 class Player:
     def __init__(self, data):
@@ -25,16 +25,16 @@ class Player:
         return self.hp > 0
 
     def take_damage(self, damage):
+        """受到攻击时的处理 (修正版：返回字典以兼容技能模块)"""
         actual_damage = max(1, damage - self.defense)
         actual_damage = int(actual_damage * random.uniform(0.9, 1.1))
         self.hp -= actual_damage
         if self.hp < 0:
             self.hp = 0
-        return actual_damage
+        return {"final_dmg": actual_damage}
 
     def add_status_effect(self, icon, name, duration, effect_type, value=0):
         """添加状态效果"""
-        # 检查是否已经存在相同类型的状态，如果存在则覆盖
         for i, status in enumerate(self.status_effects):
             if status["effect"] == effect_type:
                 self.status_effects[i] = {"icon": icon, "name": name, "duration": duration, "effect": effect_type, "value": value}
@@ -43,14 +43,11 @@ class Player:
 
     def update_status_effects(self):
         """每回合结束时更新状态效果"""
-        # 修改点：先减少持续时间
         for status in self.status_effects:
             status["duration"] -= 1
             
-        # 移除过期状态
         self.status_effects = [s for s in self.status_effects if s["duration"] > 0]
         
-        # 再应用效果
         for status in self.status_effects:
             if status["effect"] == "atk_up":
                 self.atk = int(self.atk * (1 + status["value"]))
@@ -65,7 +62,6 @@ class Player:
         
         status_str = ""
         if self.status_effects:
-            # 提取图标，不带名称，直接拼接
             icons = " ".join([s['icon'] for s in self.status_effects])
             status_str = f" {icons}"
         
@@ -73,89 +69,73 @@ class Player:
 
     def get_action(self, enemies=None):
         """
-        获取玩家行动。
+        获取玩家行动 (模块化版)
         """
         # 检查是否处于束缚状态
         if self.is_stunned:
             print(f"   🕸️ {self.name} 被蛛网束缚住了！无法行动！")
-            self.is_stunned = False # 回合结束解除束缚
+            self.is_stunned = False 
             return {"type": "stunned", "msg": f"{self.name} 无法行动"}
 
         if self.name == "爱丽丝":
             # === 交互逻辑：爱丽丝 ===
-            # 新增：手动选择目标 & 技能合并输入
-            
             alive_enemies = [m for m in enemies if m.is_alive()] if enemies else []
             
             if not alive_enemies:
                 print("   ❌ 场上没有可攻击的目标！")
                 return {"type": "no_target", "msg": "没有目标"}
 
-            # 修改点：删除了这里打印目标血条的代码，防止刷屏
-            # 统一由主循环在回合开始时打印状态
-            
-            # 打印技能列表 - v13 优化：显示技能可用性
-            charge_desc = PLAYER_SKILLS_META["alice"]["charge"]["desc"]
-            charge_detail = PLAYER_SKILLS_META["alice"]["charge"]["detail"]
-            ex_desc = PLAYER_SKILLS_META["alice"]["ex"]["desc"]
-            ex_detail = PLAYER_SKILLS_META["alice"]["ex"]["detail"]
-            physical_desc = PLAYER_SKILLS_META["alice"]["physical"]["desc"]
-            physical_detail = PLAYER_SKILLS_META["alice"]["physical"]["detail"]
-            
+            # 获取技能描述
+            charge_skill = get_skill("alice_charge")
+            ex_skill = get_skill("alice_ex")
+            phys_skill = get_skill("alice_physical")
+
             print(f"\n   >> 爱丽丝，请做出你的行动！(当前能量: {self.energy})")
-            print(f"   [1] {charge_desc}")
-            print(f"       说明: {charge_detail}")
+            print(f"   [1] {charge_skill.name}")
+            print(f"       说明: {charge_skill.desc}")
             
-            # v13 新增：检查大招能量是否足够
             ex_status = ""
             if self.energy < 2:
                 ex_status = " (❌ 能量不足)"
             
-            print(f"   [2] {ex_desc}{ex_status}")
-            print(f"       说明: {ex_detail}")
-            print(f"   [3] {physical_desc}")
-            print(f"       说明: {physical_detail}")
+            print(f"   [2] {ex_skill.name}{ex_status}")
+            print(f"       说明: {ex_skill.desc}")
+            print(f"   [3] {phys_skill.name}")
+            print(f"       说明: {phys_skill.desc}")
             
-            # v12 新增：优化输入提示排版
             print(f"\n   >>> 请输入指令：")
             print(f"   格式：目标序号-技能序号 (例如：1-2)")
             
             while True:
                 try:
-                    # 合并输入逻辑：格式为 "目标序号-技能序号"，例如 "1-2"
                     combined_input = input().strip()
-                    
-                    target_idx = 0 # 默认第一个
-                    skill_idx = 1  # 默认充能
+                    target_idx = 0 
+                    skill_idx = 1  
                     
                     if '-' in combined_input:
                         parts = combined_input.split('-')
                         target_idx = int(parts[0]) - 1
                         skill_idx = int(parts[1])
                     else:
-                        # 兼容旧输入，如果只输入数字，视为技能序号，目标默认为第一个
                         skill_idx = int(combined_input)
                         target_idx = 0
 
-                    # 验证目标
                     if 0 <= target_idx < len(alive_enemies):
                         self.selected_target = alive_enemies[target_idx]
                     else:
                         print(f"   目标序号无效 (1-{len(alive_enemies)})，默认攻击第一个目标")
                         self.selected_target = alive_enemies[0]
                     
-                    # 验证技能
                     if skill_idx not in [1, 2, 3]:
                         print(f"   技能序号无效 (1-3)，默认执行充能")
                         skill_idx = 1
                     
-                    # v13 新增：前置校验大招能量
                     if skill_idx == 2 and self.energy < 2:
                         print(f"   ❌ 能量不足！无法发动必杀技！(当前能量: {self.energy})")
                         print(f"   请重新输入指令。")
-                        continue # 重新输入
+                        continue 
                     
-                    break # 输入合法，跳出循环
+                    break 
 
                 except ValueError:
                     print("   输入格式错误，默认目标1，技能1 (充能)")
@@ -163,30 +143,36 @@ class Player:
                     skill_idx = 1
                     break
 
-            # 根据 skill_idx 执行逻辑
+            # 执行技能
             if skill_idx == 2:
-                # 释放大招 (需要 2 层能量)
-                # 从 skill.py 获取参数
-                ex_meta = PLAYER_SKILLS_META["alice"]["ex"]
-                base_multiplier = ex_meta.get("base_multiplier", 5.91)
-                energy_bonus = ex_meta.get("energy_bonus", 0.5)
-                crit_chance = ex_meta.get("crit_chance", 0.15)
-                crit_multiplier = ex_meta.get("crit_multiplier", 2.0)
-
+                # 释放大招 (特殊逻辑：消耗能量并增加伤害)
+                # 为了保持模块化，我们尽量复用 AttackEffect 的描述，但计算逻辑需要单独处理
+                base_multiplier = ex_skill.multiplier
+                energy_bonus = 0.5 
+                crit_chance = 0.15
+                crit_mult = 2.0
+                
                 base_dmg = self.atk * base_multiplier
                 stack_bonus = 1.0 + (self.energy * energy_bonus)
                 final_multiplier = base_dmg * stack_bonus
                 
                 is_crit = random.random() < crit_chance
                 if is_crit:
-                    final_multiplier *= crit_multiplier
+                    final_multiplier *= crit_mult
                 
                 damage = int(final_multiplier)
                 self.energy = 0 
                 
+                # 执行伤害
+                result = self.selected_target.take_damage(damage)
+                print(f"   🌟 {self.name} 喊道: {ex_skill.name}!")
+                print(f"   > 对 {self.selected_target.name} 造成 {result['final_dmg']} 点巨额伤害!")
+                if not self.selected_target.is_alive():
+                    print(f"   💀 {self.selected_target.name} 倒下了...")
+                
                 return {
                     "type": "alice_ex",
-                    "msg": f"🌟 {self.name} 喊道: {ex_desc}",
+                    "msg": f"🌟 {self.name} 喊道: {ex_skill.name}",
                     "damage": damage,
                     "is_crit": is_crit,
                     "target": self.selected_target
@@ -194,56 +180,47 @@ class Player:
             
             elif skill_idx == 3:
                 # 物理攻击
-                # 从 skill.py 获取参数
-                phys_meta = PLAYER_SKILLS_META["alice"]["physical"]
-                variance = phys_meta.get("variance", 5)
-                crit_chance = phys_meta.get("crit_chance", 0.1)
-                crit_multiplier = phys_meta.get("crit_multiplier", 1.5)
-
-                dmg_var = random.randint(self.atk - variance, self.atk + variance)
-                if random.random() < crit_chance:
-                    dmg_var = int(dmg_var * crit_multiplier)
-                    return {
-                        "type": "normal_attack",
-                        "msg": f"✨ 爱丽丝物理攻击! 暴击! 造成 {dmg_var} 点伤害!",
-                        "damage": dmg_var,
-                        "target": self.selected_target
-                    }
+                # 复用 AttackEffect 逻辑
+                dmg = int(random.randint(self.atk - 5, self.atk + 5))
+                if random.random() < 0.1:
+                    dmg = int(dmg * 1.5)
+                    return {"type": "normal_attack", "msg": f"✨ 爱丽丝物理攻击! 暴击! 造成 {dmg} 点伤害!", "damage": dmg, "target": self.selected_target}
                 else:
-                    return {
-                        "type": "normal_attack",
-                        "msg": f"✨ 爱丽丝物理攻击! 造成 {dmg_var} 点伤害!",
-                        "damage": dmg_var,
-                        "target": self.selected_target
-                    }
+                    return {"type": "normal_attack", "msg": f"✨ 爱丽丝物理攻击! 造成 {dmg} 点伤害!", "damage": dmg, "target": self.selected_target}
             
             else:
                 # 充能逻辑
-                # 从 skill.py 获取参数
-                charge_meta = PLAYER_SKILLS_META["alice"]["charge"]
-                gain = charge_meta.get("gain_energy", 1)
-                self.energy += gain
+                self.energy += 1
                 return {
                     "type": "alice_charge",
-                    "msg": f"⚡ {self.name} 喊道: {charge_desc} -> 能量充填层数 -> {self.energy}"
+                    "msg": f"⚡ {self.name} 喊道: {charge_skill.name} -> 能量充填层数 -> {self.energy}"
                 }
 
         elif self.name == "柚子":
-            # 柚子 AI (加入了大招逻辑)
-            # 从 skill.py 获取参数
-            super_meta = PLAYER_SKILLS_META["yuzu"]["super"]
-            stun_chance = super_meta.get("stun_chance", 0.4)
+            # 柚子 AI
+            super_skill = get_skill("yuzu_super")
+            normal_skill = get_skill("yuzu_normal")
             
-            # 如果还没用过且随机数命中，使用大招
-            if not self.has_used_super and random.random() < stun_chance:
+            if not self.has_used_super and random.random() < super_skill.chance:
                 self.has_used_super = True
+                # 执行眩晕效果
+                target = random.choice([m for m in enemies if m.is_alive()]) if enemies else None
+                if target:
+                    logs = super_skill.execute(self, [target], {})
+                    for log in logs:
+                        print(log)
                 return {
                     "type": "super_attack",
-                    "msg": f"🎮 {self.name} 喊道: '{super_meta['desc']}' 造成了眩晕！",
+                    "msg": f"🎮 {self.name} 喊道: '{super_skill.name}' 造成了眩晕！",
                     "effect": "stun"
                 }
             else:
                 # 普通攻击
+                target = random.choice([m for m in enemies if m.is_alive()]) if enemies else None
+                if target:
+                    logs = normal_skill.execute(self, [target], {})
+                    for log in logs:
+                        print(log)
                 return {
                     "type": "normal_attack",
                     "msg": f"💥 {self.name} 进行普通攻击。造成 {self.atk} 点伤害！",
@@ -251,46 +228,38 @@ class Player:
                 }
                 
         elif self.name == "小绿":
-            # 小绿 AI (治疗)
-            # 从 skill.py 获取参数
-            heal_meta = PLAYER_SKILLS_META["midori"]["heal"]
-            min_heal = heal_meta.get("min_heal", 20)
-            max_heal = heal_meta.get("max_heal", 30)
-            
-            heal_amount = random.randint(min_heal, max_heal)
+            # 小绿 AI
+            heal_skill = get_skill("midori_heal")
+            # 治疗不需要目标列表，直接在 main.py 处理全队
             return {
                 "type": "heal",
-                "msg": f"🎨 {self.name} 发动【{heal_meta['desc']}】！画出了治愈的颜料！",
-                "amount": heal_amount
+                "msg": f"🎨 {self.name} 发动【{heal_skill.name}】！画出了治愈的颜料！",
+                "amount": 25 # 默认治疗量
             }
             
         elif self.name == "桃井":
-            # 桃井 AI (盲盒模式：随机 Buff/Debuff/普攻)
+            # 桃井 AI
             roll = random.random()
             
             if roll < 0.3:
-                # 30% 概率：普通攻击
+                # 普通攻击
                 return {
                     "type": "normal_attack",
                     "msg": f"📝 {self.name} 进行了普通的投掷攻击。造成 {self.atk} 点伤害！",
                     "damage": self.atk
                 }
             elif roll < 0.6:
-                # 30% 概率：给敌人上 Debuff
+                # Debuff
                 effect_type = random.choice(["attack_down", "defense_down"])
-                # 从 skill.py 获取描述
-                debuff_desc = PLAYER_SKILLS_META["momoi"]["debuff"]["desc"]
-                msg_map = {
-                    "attack_down": "剧本里写着BOSS力气变小了！",
-                    "defense_down": "剧本里写着BOSS的盔甲碎了！"
-                }
+                skill_id = "momoi_debuff_atk" if effect_type == "attack_down" else "momoi_debuff_def"
+                skill = get_skill(skill_id)
                 return {
                     "type": "plot_debuff",
-                    "msg": f"📝 {self.name} 大喊：'{msg_map[effect_type]}'",
+                    "msg": f"📝 {self.name} 大喊：'{skill.name}'",
                     "effect": effect_type
                 }
             else:
-                # 40% 概率：给队友上 Buff
+                # Buff
                 effect_type = random.choice(["heal", "atk_up"])
                 amount = random.randint(15, 25)
                 if effect_type == "heal":
@@ -305,14 +274,14 @@ class Player:
                         "type": "plot_buff",
                         "msg": f"📝 {self.name} 大喊：'剧本里写着大家获得了力量的加持！'",
                         "effect": "atk_up",
-                        "amount": int(self.atk * 0.2) # 增加20%攻击力
+                        "amount": int(self.atk * 0.2)
                     }
             
         else:
             # 默认普通攻击
             return {
                 "type": "normal_attack",
-                "msg": f"💥 {name} 进行普通攻击。造成 {self.atk} 点伤害！",
+                "msg": f"💥 {self.name} 进行普通攻击。造成 {self.atk} 点伤害！",
                 "damage": self.atk
             }
 
