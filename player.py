@@ -163,12 +163,15 @@ class Player:
                 damage = int(final_multiplier)
                 self.energy = 0 
                 
-                # 执行伤害
-                result = self.selected_target.take_damage(damage)
+                # 执行伤害 (修改为AOE逻辑)
                 print(f"   🌟 {self.name} 喊道: {ex_skill.name}!")
-                print(f"   > 对 {self.selected_target.name} 造成 {result['final_dmg']} 点巨额伤害!")
-                if not self.selected_target.is_alive():
-                    print(f"   💀 {self.selected_target.name} 倒下了...")
+                print(f"   > 释放出覆盖全场的巨大电磁炮！")
+                
+                for target in alive_enemies:
+                    result = target.take_damage(damage)
+                    print(f"   > 对 {target.name} 造成 {result['final_dmg']} 点巨额伤害!")
+                    if not target.is_alive():
+                        print(f"   💀 {target.name} 倒下了...")
                 
                 return {
                     "type": "alice_ex",
