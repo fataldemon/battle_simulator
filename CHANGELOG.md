@@ -1,0 +1,42 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [14.1] - 2026-04-24
+### Fixed
+- 修复了爱丽丝大招“光哟！！！”的逻辑，使其能够对全场所有存活敌人造成 AOE 伤害。之前仅对单体生效。
+
+## [14.0] - 2026-04-24
+### Added
+- 新增技能：桃井的回复技能 `momoi_heal`。
+### Changed
+- **统一台词打印**：所有角色的行动台词现在统一从 `skill.py` 的技能注册表中动态读取。
+- **代码结构优化**：`player.py` 和 `skill.py` 进行了重构，消除了硬编码。
+### Fixed
+- 修复了充能、普攻、桃井技能等未打印台词的 Bug。
+
+## [12.0] - 2026-04-24
+### Added
+- **可视化血条**：怪物和玩家现在都拥有可视化的 HP 进度条。
+- **增益图标显示**：在血条下方增加了状态栏，实时显示当前的 Buff 或 Debuff 图标。
+- **输入提示优化**：优化了爱丽丝的行动指令输入界面。
+- **细化技能说明**：在爱丽丝的技能菜单中，增加了详细的文字说明。
+
+## [11.4] - 2026-04-24
+### Fixed
+- 修复了玩家和怪物被击败时，系统先打印“💀 倒下了...”，后打印“💥 击中了...造成 X 点伤害”的逻辑错误。
+### Changed
+- 将最大回合数限制从 30 回合调整为 50 回合。
+
+## [11.1] - 2026-04-24
+### Added
+- **模块化重构**：引入了 `monster.py` 和 `player.py`。
+- **特色技能系统**：怪物拥有了具体的 `skills_list`（如束缚、地震、吸血等）。
+- **角色技能完善**：完善了桃井、小绿、柚子、爱丽丝的技能逻辑。
+### Fixed
+- 修复了 v11 版本中玩家被攻击时因逻辑错误导致的 TypeError 崩溃问题。
