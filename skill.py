@@ -294,6 +294,7 @@ SKILL_REGISTRY = {
     "red_pen_mark": AttackEffect("红笔批改", "用红笔精准批注弱点", multiplier=1.2, variance=0),
     "calculation": AttackEffect("精确计算", "经过精密计算后的攻击", multiplier=2.5, variance=0, is_crit=True, crit_mult=2.0), # Simplified to crit attack
     "high_speed_calculation": AttackEffect("高速计算", "高速运算后的连续打击", multiplier=2.5, variance=0, is_crit=True, crit_mult=2.0),
+    "critical_hit": AttackEffect("暴击", "发动了必定暴击的攻击", multiplier=2.0, variance=0, is_crit=True, crit_mult=2.0),
     "life_steal": LifestealEffect("生命汲取", "吸取敌人的生命力", multiplier=1.5, ratio=0.5),
     
     # --- 玩家技能 ---

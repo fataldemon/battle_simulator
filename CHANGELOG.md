@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [15.1] - 2026-04-24
+### Fixed
+- 修复了优香大魔王（优香大魔王）在战斗中随机发动“未知技能”的 Bug。
+- 在 `skill.py` 的技能注册表中补全了缺失的 `critical_hit` 技能定义。
+
 ## [15.0] - 2026-04-24
 ### Changed
 - **玩家 UI**：将爱丽丝的能量槽更新为复古方块风格 `[█░]`。
