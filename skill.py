@@ -26,15 +26,10 @@ class AttackEffect(BaseSkillEffect):
         self.variance = variance
         self.is_crit = is_crit
         self.crit_mult = crit_mult
-        self.is_aoe = is_aoe
+        self.is_aoe = is_aoe  # 新增：是否为群体攻击
 
     def execute(self, caster, targets, params):
         logs = []
-        
-        # 如果是 AOE 技能，则攻击所有存活敌人
-        if self.is_aoe:
-            targets = [e for e in caster.battle.enemies if e.is_alive()]
-        
         for target in targets:
             if not target.is_alive():
                 continue
@@ -261,7 +256,8 @@ SKILL_REGISTRY = {
     
     # --- 玩家技能 ---
     "alice_charge": BaseSkillEffect("光啊！", "正在积蓄光之剑的能量", cost=0),
-    "alice_ex": AttackEffect("世界的法则即将崩坏！光哟！！！", "释放出巨大的电磁炮", multiplier=5.91, variance=0, is_crit=True, crit_mult=2.0, is_aoe=True),
+    # 修改：爱丽丝的大招现在支持 AOE (全体攻击)
+    "alice_ex": AttackEffect("世界的法则即将崩坏！光哟！！！", "释放出覆盖全场的巨大电磁炮", multiplier=5.91, variance=0, is_crit=True, crit_mult=2.0, is_aoe=True),
     "alice_physical": AttackEffect("物理攻击", "挥舞光之剑进行物理打击", multiplier=1.0, variance=5),
     
     "yuzu_super": StunEffect("通关指令·改", "发动了必杀技，造成了眩晕", chance=0.4),
