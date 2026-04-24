@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [15.2] - 2026-04-24
+### Added
+- **命令行参数支持**：增加了 `argparse` 模块，允许通过命令行参数自定义副本。
+  - `--level`：指定怪物总等级，系统会随机生成满足等级的怪物群。
+  - `--monster`：指定怪物列表（支持名字模糊匹配或索引），用于直接挑战特定 Boss。
+- **自定义副本模式**：新增了 `init_game_custom` 函数，实现了非随机模式的副本生成逻辑。
+
 ## [15.1] - 2026-04-24
 ### Fixed
 - 修复了优香大魔王（优香大魔王）在战斗中随机发动“未知技能”的 Bug。

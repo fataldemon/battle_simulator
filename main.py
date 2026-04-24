@@ -1,14 +1,15 @@
 # main.py
-# 战斗模拟器 v14 - 主程序 (最终重构版)
+# 战斗模拟器 v15 - 主程序 (增加命令行参数支持)
 
+import argparse
 import random
 from monster import MONSTERS_DATA, Monster
 from player import PLAYERS_DATA, Player
 
-def init_game():
-    """初始化游戏 - 随机副本模式"""
+def init_game_random():
+    """初始化游戏 - 随机副本模式 (原有逻辑)"""
     print("=" * 50)
-    print("📜 团队副本模拟器 v14 (模块化重构版)")
+    print("📜 团队副本模拟器 v15 (随机模式)")
     print("=" * 50)
     
     # 1. 筛选不同等级的怪物池
@@ -47,6 +48,87 @@ def init_game():
         enemy_team.append(enemy)
         print(f"   - {enemy.name} (LV.{enemy.level}) 出现！")
         
+    # 打印初始状态
+    print("-" * 50)
+    for m in enemy_team:
+        if m.is_alive():
+            m.print_status()
+    
+    # 3. 初始化玩家
+    party = []
+    for p_data in PLAYERS_DATA:
+        party.append(Player(p_data))
+        
+    print(f"我方小队：{', '.join([p.name for p in party])}")
+    print("-" * 50)
+    
+    return enemy_team, party
+
+def init_game_custom(args):
+    """初始化游戏 - 自定义模式 (根据命令行参数)"""
+    print("=" * 50)
+    print("📜 团队副本模拟器 v15 (自定义模式)")
+    print("=" * 50)
+    
+    enemy_team = []
+    
+    if args.monster:
+        # 处理 --monster 参数
+        # 支持输入逗号分隔的名字或索引
+        targets = [t.strip() for t in args.monster.split(',')]
+        print(f"\n⚠️ 警报！前方遭遇了指定怪物！")
+        
+        for target in targets:
+            found_monster = None
+            
+            # 尝试作为索引
+            try:
+                idx = int(target)
+                if 0 <= idx < len(MONSTERS_DATA):
+                    found_monster = MONSTERS_DATA[idx]
+                else:
+                    print(f"   ❌ 索引 {idx} 超出范围 (0-{len(MONSTERS_DATA)-1})，跳过。")
+                    continue
+            except ValueError:
+                # 尝试作为名字 (模糊匹配)
+                for m_data in MONSTERS_DATA:
+                    if target in m_data['name']:
+                        found_monster = m_data
+                        break
+            
+            if found_monster:
+                enemy = Monster(found_monster)
+                enemy_team.append(enemy)
+                print(f"   - {enemy.name} (LV.{enemy.level}) 出现！")
+            else:
+                print(f"   ❌ 未找到怪物: {target}")
+            
+    elif args.level:
+        # 处理 --level 参数
+        target_level = int(args.level)
+        current_level = 0
+        print(f"\n⚠️ 警报！前方遭遇了等级总和约为 {target_level} 的怪物群！")
+        
+        # 简单的贪心算法：随机抽取，直到总等级接近目标
+        available_monsters = list(MONSTERS_DATA) 
+        
+        while current_level < target_level and available_monsters:
+            # 随机选择一个
+            monster_data = random.choice(available_monsters)
+            enemy = Monster(monster_data)
+            enemy_team.append(enemy)
+            current_level += enemy.level
+            print(f"   - {enemy.name} (LV.{enemy.level}) 出现！")
+            
+            # 移除已选择的，避免重复
+            available_monsters.remove(monster_data)
+            
+        print(f"   (当前总等级: {current_level})")
+        
+    else:
+        # 如果没有参数，回退到随机模式
+        return init_game_random()
+
     # 打印初始状态
     print("-" * 50)
     for m in enemy_team:
@@ -179,7 +261,15 @@ def process_monster_action(enemy_team, party):
         boss.decide_action(party)
 
 def main():
-    enemy_team, party = init_game()
+    # 解析命令行参数
+    parser = argparse.ArgumentParser(description="战斗模拟器 v15")
+    parser.add_argument('--level', type=int, help='指定怪物总等级 (随机生成)')
+    parser.add_argument('--monster', type=str, help='指定怪物列表 (逗号分隔的名字或索引)')
+    args = parser.parse_args()
+    
+    # 根据参数初始化游戏
+    enemy_team, party = init_game_custom(args)
+    
     turn = 1
     MAX_TURNS = 50  # 最大回合数限制
     
