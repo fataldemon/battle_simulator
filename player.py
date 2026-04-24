@@ -1,5 +1,5 @@
 # player.py
-# 战斗模拟器 v14 - 玩家数据与行为逻辑模块 (模块化重构版 - 修正打印缺失)
+# 战斗模拟器 v19 - 玩家数据与行为逻辑模块 (全员台词人设强化版)
 
 import random
 from skill import SKILL_REGISTRY, get_skill, AttackEffect, BuffEffect, DebuffEffect, StunEffect, HealEffect
@@ -289,12 +289,13 @@ class Player:
                 alive_enemies = [m for m in enemies if m.is_alive()]
                 if alive_enemies:
                     target = random.choice(alive_enemies)
-                    dmg = int(random.randint(self.atk - 5, self.atk + 5))
+                    dmg = self.atk
                     result = target.take_damage(dmg)
-                    print(f"   🖌️ {self.name} 挥动画笔攻击！造成 {result['final_dmg']} 点伤害！")
+                    # 【v19 更新】使用新的台词
+                    print(f"   🎨 {self.name} 喊道: {get_skill('midori_normal').name}! 造成 {result['final_dmg']} 点伤害！")
                     return {
                         "type": "normal_attack",
-                        "msg": f"🖌️ {self.name} 进行了普通的画笔攻击。造成 {result['final_dmg']} 点伤害！",
+                        "msg": f"🎨 {self.name} 进行了普通的画笔攻击。造成 {result['final_dmg']} 点伤害！",
                         "damage": result['final_dmg']
                     }
                 else:
@@ -312,7 +313,8 @@ class Player:
                 target = random.choice(alive_enemies)
                 dmg = self.atk
                 result = target.take_damage(dmg)
-                print(f"   📝 {self.name} 进行了普通的投掷攻击。造成 {result['final_dmg']} 点伤害！")
+                # 【v19 更新】使用新的台词
+                print(f"   📝 {self.name} 喊道: {get_skill('momoi_normal').name}! 造成 {result['final_dmg']} 点伤害！")
                 return {
                     "type": "normal_attack",
                     "msg": f"📝 {self.name} 进行了普通的投掷攻击。造成 {result['final_dmg']} 点伤害！",
@@ -371,7 +373,7 @@ class Player:
 # --- 数据常量 ---
 PLAYERS_DATA = [
     {"name": "爱丽丝", "role": "勇者", "hp": 100, "atk": 50, "defense": 5, "skill": "光哟！！！" , "death_msg": "光... 熄灭了... 老师... 对不起..."},
-    {"name": "桃井", "role": "编剧", "hp": 80, "atk": 40, "defense": 2, "skill": "剧情杀", "death_msg": "剧本...还没写完...大家...要继续..."},
+    {"name": "桃井", "role": "编剧", "hp": 80, "atk": 40, "defense": 2, "skill": "剧情杀", "death_msg": "好不甘心啊——！剧本...怎么可以停在这里...大家...快逃啊..."},
     {"name": "小绿", "role": "原画", "hp": 120, "atk": 35, "defense": 10, "skill": "艺术润色", "death_msg": "画笔...断了...最后的颜色...是..."},
     {"name": "柚子", "role": "部长", "hp": 90, "atk": 45, "defense": 3, "skill": "通关指令", "death_msg": "Game...Over...但...爱丽丝...要赢..."},
 ]

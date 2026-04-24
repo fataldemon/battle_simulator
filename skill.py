@@ -1,5 +1,5 @@
 # skill.py
-# 战斗模拟器 v14 - 技能模块化管理中心 (修正版)
+# 战斗模拟器 v21 - 技能模块化管理中心 (桃井台词内测版 + 爱丽丝充能更新)
 # 所有技能的定义和执行逻辑都在这里，方便扩展和管理
 
 import random
@@ -304,22 +304,28 @@ SKILL_REGISTRY = {
     "life_steal": LifestealEffect("生命汲取", "吸取敌人的生命力", multiplier=1.5, ratio=0.5),
     
     # --- 玩家技能 ---
-    "alice_charge": BaseSkillEffect("光啊！", "正在积蓄光之剑的能量", cost=0),
+    "alice_charge": BaseSkillEffect("光啊！赐予我力量！", "正在积蓄光之剑的能量", cost=0),
     # 修改：爱丽丝的大招现在使用 AoEAttackEffect 类型
-    "alice_ex": AoEAttackEffect("世界的法则即将崩坏！光哟！！！", "释放出覆盖全场的巨大电磁炮", multiplier=5.91, variance=0, is_crit=True, crit_mult=2.0),
-    "alice_physical": AttackEffect("物理攻击", "挥舞光之剑进行物理打击", multiplier=1.0, variance=5),
+    "alice_ex": AoEAttackEffect("世界的法则即将崩坏！光哟！！！","释放出覆盖全场的巨大电磁炮", multiplier=5.91, variance=0, is_crit=True, crit_mult=2.0),
+    # 修改：爱丽丝的普攻名称更改为老师指定的名字
+    "alice_physical": AttackEffect("光之剑，出鞘吧", "光之剑出鞘，斩向敌人！", multiplier=1.0, variance=5),
     
-    "yuzu_super": StunEffect("通关指令·改", "发动了必杀技，造成了眩晕", chance=0.4),
-    "yuzu_normal": AttackEffect("普通攻击", "进行了普通攻击", multiplier=1.0, variance=0),
+    # --- 修改柚子的技能 (v18 柚子人设强化版) ---
+    "yuzu_super": StunEffect("Hit Stop!", "时间停止！强制打断！", chance=0.4),
+    "yuzu_normal": AttackEffect("普通攻击", "请别靠近我……", multiplier=1.0, variance=0),
+    
+    # --- 修改桃井和小绿的技能 (v20 内测玩家版) ---
+    "momoi_normal": AttackEffect("内测独占技能", "嘿嘿，这可是只有内测玩家才能看到的秘密招式！【内测·独占技能】！", multiplier=1.0, variance=5),
+    "midori_normal": AttackEffect("草稿涂色", "草稿涂色！请多指教！", multiplier=1.0, variance=5),
     
     "midori_heal": HealEffect("艺术润色", "画出了治愈的颜料", amount=25),
     
-    # --- 修正桃井的技能 ---
-    "momoi_debuff_atk": DebuffEffect("剧情杀 (降低攻击)", "剧本里写着BOSS的攻击下降了", stat="atk", value=0.3, duration=2, icon="📉"),
-    "momoi_debuff_def": DebuffEffect("剧情杀 (降低防御)", "剧本里写着BOSS的防御下降了", stat="defense", value=0.3, duration=2, icon="📉"),
-    "momoi_debuff": DebuffEffect("剧情杀 (Debuff)", "剧本里写着BOSS的状态变差了", stat="atk", value=0.3, duration=2, icon="📉"),
-    "momoi_buff": BuffEffect("剧情杀 (Buff)", "剧本里写着大家获得了力量", stat="atk", value=0.2, duration=2, icon="⚔️"),
-    "momoi_heal": HealEffect("剧本里写着大家充满了活力！", "全队恢复了 18 HP！", amount=18), # 新增桃井回复技能
+    # --- 修正桃井的技能 (v17 优化版) ---
+    "momoi_debuff_atk": DebuffEffect("剧情杀 (降低攻击)", "为了让主角赢得漂亮，BOSS 的智商下线了！", stat="atk", value=0.3, duration=2, icon="📉"),
+    "momoi_debuff_def": DebuffEffect("剧情杀 (降低防御)", "为了让主角赢得漂亮，BOSS 的智商下线了！", stat="defense", value=0.3, duration=2, icon="📉"),
+    "momoi_debuff": DebuffEffect("剧情杀 (Debuff)", "为了让主角赢得漂亮，BOSS 的智商下线了！", stat="atk", value=0.3, duration=2, icon="📉"),
+    "momoi_buff": BuffEffect("剧情杀 (Buff)", "为了收视率，主角团必须加强！", stat="atk", value=0.2, duration=2, icon="⚔️"),
+    "momoi_heal": HealEffect("剧本里写着大家充满了活力！", "插入一段感人至深的回忆杀！", amount=18), # 新增桃井回复技能
 }
 
 # ==============================================================================

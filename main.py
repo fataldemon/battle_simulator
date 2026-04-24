@@ -1,5 +1,5 @@
 # main.py
-# 战斗模拟器 v16 - 主程序 (修复血量显示Bug)
+# 战斗模拟器 v21 - 主程序 (修复状态栏与重复台词 + 即时刷新)
 
 import argparse
 import random
@@ -9,7 +9,7 @@ from player import PLAYERS_DATA, Player
 def init_game_random():
     """初始化游戏 - 随机副本模式"""
     print("=" * 50)
-    print("📜 团队副本模拟器 v16 (随机模式)")
+    print("📜 团队副本模拟器 v21 (随机模式)")
     print("=" * 50)
     
     low_level_pool = [m for m in MONSTERS_DATA if m['level'] <= 5]
@@ -65,7 +65,7 @@ def init_game_custom(args):
         return init_game_random()
 
     print("=" * 50)
-    print("📜 团队副本模拟器 v16 (自定义模式)")
+    print("📜 团队副本模拟器 v21 (自定义模式)")
     print("=" * 50)
     
     enemy_team = []
@@ -181,12 +181,14 @@ def process_player_actions(enemy_team, party):
             for m in enemy_team:
                 if m.is_alive():
                     if effect == "attack_down":
-                        m.add_status_effect("📉", "攻击力下降", 1, "attack_down", 0.3)
+                        # 【修复】将桃井的 Debuff 持续时间从 1 改为 3，以便在状态栏显示
+                        m.add_status_effect("📉", "攻击力下降", 3, "attack_down", 0.3)
                         m.current_atk = int(m.base_atk * 0.7)
                         m.atk = m.current_atk
                         print(f"   > {m.name} 的攻击力下降了！")
                     elif effect == "defense_down":
-                        m.add_status_effect("📉", "防御力下降", 1, "defense_down", 0.2)
+                        # 【修复】将桃井的 Debuff 持续时间从 1 改为 3
+                        m.add_status_effect("📉", "防御力下降", 3, "defense_down", 0.2)
                         m.defense = int(m.base_defense * 0.8)
                         print(f"   > {m.name} 的防御力下降了！")
                         
@@ -205,6 +207,12 @@ def process_player_actions(enemy_team, party):
                         p.atk += buff_amount
                         p.add_status_effect("⚔️", "攻击力提升", 2, "atk_up", 0.2)
                 print(f"   > 全队攻击力提升了！")
+        
+        # 【v21 追加】行动结束后，立即刷新一次状态显示，让玩家能即时看到 buff/debuff
+        print("\n   [即时状态刷新]")
+        for m in enemy_team:
+            if m.is_alive():
+                m.print_status()
 
 def process_monster_action(enemy_team, party):
     """处理怪物行动"""
@@ -223,7 +231,7 @@ def process_monster_action(enemy_team, party):
         boss.decide_action(party)
 
 def main():
-    parser = argparse.ArgumentParser(description="战斗模拟器 v16")
+    parser = argparse.ArgumentParser(description="战斗模拟器 v21")
     parser.add_argument('--level', type=int, help='指定怪物总等级')
     parser.add_argument('--monster', type=str, help='指定怪物列表')
     args = parser.parse_args()

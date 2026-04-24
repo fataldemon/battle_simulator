@@ -1,5 +1,5 @@
 # monster.py
-# 战斗模拟器 v14 - 怪物数据与行为逻辑模块 (最终完整版)
+# 战斗模拟器 v21 - 怪物数据与行为逻辑模块 (最终完整版 + 状态栏修复)
 
 import random
 # 修复：导入所有需要用到的技能效果类，包括新增的 CleanseEffect
@@ -194,6 +194,7 @@ class Monster:
         filled = int(self.hp / self.max_hp * bar_length)
         bar = "█" * filled + "░" * (bar_length - filled)
         
+        # 【v21 修复】增加状态图标显示逻辑，与 Player 保持一致
         status_str = ""
         if self.status_effects:
             icons = " ".join([s['icon'] for s in self.status_effects])
