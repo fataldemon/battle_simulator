@@ -90,13 +90,33 @@ class Player:
             ex_skill = get_skill("alice_ex")
             phys_skill = get_skill("alice_physical")
 
-            print(f"\n   >> 爱丽丝，请做出你的行动！(当前能量: {self.energy})")
+            # --- 修改：电池样式能量槽 (复古方块风格 - 无上限) ---
+            # 动态生成能量槽
+            # 限制最大显示长度，防止 UI 溢出屏幕，比如最多显示 10 个格子
+            max_display = 10
+            
+            if self.energy > max_display:
+                energy_bar = "[" + " ".join(["█"] * max_display) + "...]"
+            else:
+                # 确定显示的格子总数：至少 2 个，最多 max_display
+                total_cells = max(2, self.energy)
+                cells = ["█" if i < self.energy else "░" for i in range(total_cells)]
+                energy_bar = "[" + " ".join(cells) + "]"
+            # --------------------------------
+
+            print(f"\n   >> 爱丽丝，请做出你的行动！(能量: {energy_bar})")
             print(f"   [1] {charge_skill.name}")
             print(f"       说明: {charge_skill.desc}")
             
-            ex_status = ""
+            # 计算大招倍率
+            base_multiplier = ex_skill.multiplier
+            energy_bonus = 0.5 
+            stack_bonus = 1.0 + (self.energy * energy_bonus)
+            final_multiplier = base_multiplier * stack_bonus
+            
+            ex_status = f" (倍率 x{final_multiplier:.2f})"
             if self.energy < 2:
-                ex_status = " (❌ 能量不足)"
+                ex_status += " (❌ 能量不足)"
             
             print(f"   [2] {ex_skill.name}{ex_status}")
             print(f"       说明: {ex_skill.desc}")

@@ -129,11 +129,17 @@ def process_player_actions(enemy_team, party):
             effect = action["effect"]
             for m in enemy_team:
                 if m.is_alive():
+                    # 添加状态效果
                     if effect == "attack_down":
-                        m.current_atk = int(m.current_atk * 0.7)
+                        m.add_status_effect("📉", "攻击力下降", 1, "attack_down", 0.3)
+                        # 即时生效：基于base计算，避免与update_status_effects冲突
+                        m.current_atk = int(m.base_atk * 0.7)
+                        m.atk = m.current_atk # 同步更新
                         print(f"   > {m.name} 的攻击力下降了！")
                     elif effect == "defense_down":
-                        m.defense = int(m.defense * 0.8)
+                        m.add_status_effect("📉", "防御力下降", 1, "defense_down", 0.2)
+                        # 即时生效
+                        m.defense = int(m.base_defense * 0.8)
                         print(f"   > {m.name} 的防御力下降了！")
                         
         elif action["type"] == "plot_buff":
