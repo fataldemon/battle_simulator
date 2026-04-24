@@ -191,7 +191,9 @@ class Player:
                     result = target.take_damage(damage)
                     print(f"   > 对 {target.name} 造成 {result['final_dmg']} 点巨额伤害!")
                     if not target.is_alive():
-                        print(f"   💀 {target.name} 倒下了...")
+                        # 获取倒地台词，如果没有则使用默认文本
+                        death_msg = getattr(target, 'death_msg', f"{target.name} 倒下了...")
+                        print(f"   💀 {target.name} 倒下了... \"{death_msg}\"")
                 
                 return {
                     "type": "alice_ex",

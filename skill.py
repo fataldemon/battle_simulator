@@ -50,7 +50,9 @@ class AttackEffect(BaseSkillEffect):
             logs.append(log_msg)
             
             if not target.is_alive():
-                logs.append(f"   💀 {target.name} 倒下了...")
+                # 获取倒地台词，如果没有则使用默认文本
+                death_msg = getattr(target, 'death_msg', f"{target.name} 倒下了...")
+                logs.append(f"   💀 {target.name} 倒下了... \"{death_msg}\"")
         return logs
 
 class AoEAttackEffect(AttackEffect):
@@ -92,7 +94,9 @@ class AoEAttackEffect(AttackEffect):
             logs.append(log_msg)
             
             if not target.is_alive():
-                logs.append(f"   💀 {target.name} 倒下了...")
+                # 获取倒地台词，如果没有则使用默认文本
+                death_msg = getattr(target, 'death_msg', f"{target.name} 倒下了...")
+                logs.append(f"   💀 {target.name} 倒下了... \"{death_msg}\"")
         return logs
 
 class HealEffect(BaseSkillEffect):
@@ -217,7 +221,9 @@ class LifestealEffect(BaseSkillEffect):
         
         logs.append(f"   🩸 {caster.name} 吸取了 {result['final_dmg']} 点生命，恢复了 {heal_val} HP！")
         if not target.is_alive():
-            logs.append(f"   💀 {target.name} 倒下了...")
+            # 获取倒地台词，如果没有则使用默认文本
+            death_msg = getattr(target, 'death_msg', f"{target.name} 倒下了...")
+            logs.append(f"   💀 {target.name} 倒下了... \"{death_msg}\"")
         return logs
 
 class TrapEffect(BaseSkillEffect):

@@ -66,6 +66,10 @@ def init_game_random():
 
 def init_game_custom(args):
     """初始化游戏 - 自定义模式 (根据命令行参数)"""
+    # 如果没有参数，回退到随机模式，不做任何打印
+    if not args.monster and not args.level:
+        return init_game_random()
+
     print("=" * 50)
     print("📜 团队副本模拟器 v15 (自定义模式)")
     print("=" * 50)
@@ -110,25 +114,25 @@ def init_game_custom(args):
         print(f"\n⚠️ 警报！前方遭遇了等级总和约为 {target_level} 的怪物群！")
         
         # 简单的贪心算法：随机抽取，直到总等级接近目标
-        available_monsters = list(MONSTERS_DATA) 
-        
-        while current_level < target_level and available_monsters:
-            # 随机选择一个
-            monster_data = random.choice(available_monsters)
+        # 【修改】不再维护 available_monsters 列表，允许重复抽取
+        while current_level < target_level:
+            # 【Bug修复】筛选出不超过目标等级的怪物，防止出现单只怪等级过高的情况
+            valid_candidates = [m for m in MONSTERS_DATA if m['level'] <= target_level]
+            
+            if not valid_candidates:
+                # 如果剩下的全是高等级怪，无法满足条件，停止生成
+                break
+            
+            # 从符合条件的怪物中随机选择（允许重复）
+            monster_data = random.choice(valid_candidates)
+            
             enemy = Monster(monster_data)
             enemy_team.append(enemy)
             current_level += enemy.level
             print(f"   - {enemy.name} (LV.{enemy.level}) 出现！")
             
-            # 移除已选择的，避免重复
-            available_monsters.remove(monster_data)
-            
         print(f"   (当前总等级: {current_level})")
         
-    else:
-        # 如果没有参数，回退到随机模式
-        return init_game_random()
-
     # 打印初始状态
     print("-" * 50)
     for m in enemy_team:
