@@ -1,5 +1,5 @@
 # main.py
-# 战斗模拟器 v15 - 主程序 (增加命令行参数支持)
+# 战斗模拟器 v16 - 主程序 (修复血量显示Bug)
 
 import argparse
 import random
@@ -7,19 +7,16 @@ from monster import MONSTERS_DATA, Monster
 from player import PLAYERS_DATA, Player
 
 def init_game_random():
-    """初始化游戏 - 随机副本模式 (原有逻辑)"""
+    """初始化游戏 - 随机副本模式"""
     print("=" * 50)
-    print("📜 团队副本模拟器 v15 (随机模式)")
+    print("📜 团队副本模拟器 v16 (随机模式)")
     print("=" * 50)
     
-    # 1. 筛选不同等级的怪物池
     low_level_pool = [m for m in MONSTERS_DATA if m['level'] <= 5]
     mid_level_pool = [m for m in MONSTERS_DATA if 6 <= m['level'] <= 10]
     high_level_pool = [m for m in MONSTERS_DATA if m['level'] > 10]
     
-    # 2. 随机选择副本模式
     mode = random.choice(['sea_king', 'dual_elite', 'solo_boss'])
-    
     enemy_team = []
     
     if mode == 'sea_king':
@@ -48,13 +45,11 @@ def init_game_random():
         enemy_team.append(enemy)
         print(f"   - {enemy.name} (LV.{enemy.level}) 出现！")
         
-    # 打印初始状态
     print("-" * 50)
     for m in enemy_team:
         if m.is_alive():
             m.print_status()
     
-    # 3. 初始化玩家
     party = []
     for p_data in PLAYERS_DATA:
         party.append(Player(p_data))
@@ -65,36 +60,30 @@ def init_game_random():
     return enemy_team, party
 
 def init_game_custom(args):
-    """初始化游戏 - 自定义模式 (根据命令行参数)"""
-    # 如果没有参数，回退到随机模式，不做任何打印
+    """初始化游戏 - 自定义模式"""
     if not args.monster and not args.level:
         return init_game_random()
 
     print("=" * 50)
-    print("📜 团队副本模拟器 v15 (自定义模式)")
+    print("📜 团队副本模拟器 v16 (自定义模式)")
     print("=" * 50)
     
     enemy_team = []
     
     if args.monster:
-        # 处理 --monster 参数
-        # 支持输入逗号分隔的名字或索引
         targets = [t.strip() for t in args.monster.split(',')]
         print(f"\n⚠️ 警报！前方遭遇了指定怪物！")
         
         for target in targets:
             found_monster = None
-            
-            # 尝试作为索引
             try:
                 idx = int(target)
                 if 0 <= idx < len(MONSTERS_DATA):
                     found_monster = MONSTERS_DATA[idx]
                 else:
-                    print(f"   ❌ 索引 {idx} 超出范围 (0-{len(MONSTERS_DATA)-1})，跳过。")
+                    print(f"   ❌ 索引 {idx} 超出范围，跳过。")
                     continue
             except ValueError:
-                # 尝试作为名字 (模糊匹配)
                 for m_data in MONSTERS_DATA:
                     if target in m_data['name']:
                         found_monster = m_data
@@ -108,24 +97,15 @@ def init_game_custom(args):
                 print(f"   ❌ 未找到怪物: {target}")
             
     elif args.level:
-        # 处理 --level 参数
         target_level = int(args.level)
         current_level = 0
         print(f"\n⚠️ 警报！前方遭遇了等级总和约为 {target_level} 的怪物群！")
         
-        # 简单的贪心算法：随机抽取，直到总等级接近目标
-        # 【修改】不再维护 available_monsters 列表，允许重复抽取
         while current_level < target_level:
-            # 【Bug修复】筛选出不超过目标等级的怪物，防止出现单只怪等级过高的情况
             valid_candidates = [m for m in MONSTERS_DATA if m['level'] <= target_level]
-            
             if not valid_candidates:
-                # 如果剩下的全是高等级怪，无法满足条件，停止生成
                 break
-            
-            # 从符合条件的怪物中随机选择（允许重复）
             monster_data = random.choice(valid_candidates)
-            
             enemy = Monster(monster_data)
             enemy_team.append(enemy)
             current_level += enemy.level
@@ -133,13 +113,11 @@ def init_game_custom(args):
             
         print(f"   (当前总等级: {current_level})")
         
-    # 打印初始状态
     print("-" * 50)
     for m in enemy_team:
         if m.is_alive():
             m.print_status()
     
-    # 3. 初始化玩家
     party = []
     for p_data in PLAYERS_DATA:
         party.append(Player(p_data))
@@ -160,8 +138,7 @@ def check_game_over(enemy_team, party):
     return False
 
 def process_player_actions(enemy_team, party):
-    """处理玩家行动 (极简版)"""
-    # 分离爱丽丝和其他队友
+    """处理玩家行动"""
     alice = None
     others = []
     for p in party:
@@ -170,20 +147,15 @@ def process_player_actions(enemy_team, party):
         else:
             others.append(p)
             
-    # 1. 爱丽丝行动 (她自己会处理所有逻辑和打印)
     if alice and alice.is_alive():
         alice.get_action(enemies=enemy_team)
-        
-        # 如果爱丽丝击败了所有敌人，直接结束行动阶段
         if not any(m.is_alive() for m in enemy_team):
             return
 
-    # 2. 其他队友行动
     for player in others:
         if not player.is_alive():
             continue
             
-        # 检查是否被束缚
         if player.is_stunned:
             print(f"\n   >> {player.name} 的行动:")
             print(f"   🕸️ {player.name} 被束缚住了，无法行动！")
@@ -191,18 +163,12 @@ def process_player_actions(enemy_team, party):
             continue
 
         print(f"\n   >> {player.name} 的行动:")
-        # 获取行动结果
-        action = player.get_action(enemies=enemy_team)
+        action = player.get_action(enemies=enemy_team, party=party)
         
-        # 修复：行动前检查敌人是否全灭
         if not any(m.is_alive() for m in enemy_team):
             break
 
-        # --- 模块化处理玩家返回的特殊效果 ---
-        # 这里不再判断具体的角色名，而是判断动作类型！
-        
         if action["type"] == "heal":
-            # 治疗逻辑
             heal_amount = action["amount"]
             for p in party:
                 if p.is_alive():
@@ -211,25 +177,20 @@ def process_player_actions(enemy_team, party):
             print(f"   > 全队恢复了 {heal_amount} HP！")
             
         elif action["type"] == "plot_debuff":
-            # 桃井的 Debuff 逻辑
             effect = action["effect"]
             for m in enemy_team:
                 if m.is_alive():
-                    # 添加状态效果
                     if effect == "attack_down":
                         m.add_status_effect("📉", "攻击力下降", 1, "attack_down", 0.3)
-                        # 即时生效：基于base计算，避免与update_status_effects冲突
                         m.current_atk = int(m.base_atk * 0.7)
-                        m.atk = m.current_atk # 同步更新
+                        m.atk = m.current_atk
                         print(f"   > {m.name} 的攻击力下降了！")
                     elif effect == "defense_down":
                         m.add_status_effect("📉", "防御力下降", 1, "defense_down", 0.2)
-                        # 即时生效
                         m.defense = int(m.base_defense * 0.8)
                         print(f"   > {m.name} 的防御力下降了！")
                         
         elif action["type"] == "plot_buff":
-            # 桃井的 Buff 逻辑
             effect = action["effect"]
             if effect == "heal":
                 heal_amount = action["amount"]
@@ -251,7 +212,6 @@ def process_monster_action(enemy_team, party):
         if not boss.is_alive():
             continue
             
-        # 检查 Boss 是否被眩晕
         if boss.is_stunned:
             print(f"\n--- {boss.name} 的行动 ---")
             print(f"💫 {boss.name} 处于眩晕状态，无法行动！")
@@ -260,52 +220,46 @@ def process_monster_action(enemy_team, party):
 
         print(f"\n--- {boss.name} 的行动 ---")
         print(f"「{boss.quote}」")
-        
-        # 调用怪物自己的 AI
         boss.decide_action(party)
 
 def main():
-    # 解析命令行参数
-    parser = argparse.ArgumentParser(description="战斗模拟器 v15")
-    parser.add_argument('--level', type=int, help='指定怪物总等级 (随机生成)')
-    parser.add_argument('--monster', type=str, help='指定怪物列表 (逗号分隔的名字或索引)')
+    parser = argparse.ArgumentParser(description="战斗模拟器 v16")
+    parser.add_argument('--level', type=int, help='指定怪物总等级')
+    parser.add_argument('--monster', type=str, help='指定怪物列表')
     args = parser.parse_args()
     
-    # 根据参数初始化游戏
     enemy_team, party = init_game_custom(args)
     
     turn = 1
-    MAX_TURNS = 50  # 最大回合数限制
+    MAX_TURNS = 50
     
     while not check_game_over(enemy_team, party):
         if turn > MAX_TURNS:
             print(f"\n⚠️ 警告！回合数已达到上限 ({MAX_TURNS})！")
-            print("💥 战斗陷入僵局，无法击败敌人！")
+            print("💥 战斗陷入僵局！")
             break
             
         print(f"\n--- 第 {turn} 回合 ---")
         
         # 显示所有怪物血条
+        print("\n[敌方状态]", flush=True)
         for m in enemy_team:
             if m.is_alive():
                 m.print_status()
         
         # 显示玩家血条和状态图标
-        print("\n   【我方状态】")
+        print("[我方状态]", flush=True)
         for p in party:
             if p.is_alive():
                 p.print_status()
         
-        # 玩家行动
         process_player_actions(enemy_team, party)
         
         if check_game_over(enemy_team, party):
             break
             
-        # 怪物行动
         process_monster_action(enemy_team, party)
         
-        # 回合结束，更新状态效果
         for p in party:
             if p.is_alive():
                 p.update_status_effects()

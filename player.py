@@ -67,7 +67,7 @@ class Player:
         
         print(f"   {self.name}: [{bar}] {self.hp}/{self.max_hp}{status_str}")
 
-    def get_action(self, enemies=None):
+    def get_action(self, enemies=None, party=None):
         """
         获取玩家行动 (模块化版)
         """
@@ -204,17 +204,25 @@ class Player:
                 }
             
             elif skill_idx == 3:
-                # 物理攻击
-                # 复用 AttackEffect 逻辑
+                # 物理攻击 (修复版：真正造成伤害)
                 dmg = int(random.randint(self.atk - 5, self.atk + 5))
-                # 【修复】增加打印语句
-                print(f"   🗡️ {self.name} 喊道: {phys_skill.name}! {phys_skill.desc}")
                 
-                if random.random() < 0.1:
-                    dmg = int(dmg * 1.5)
-                    return {"type": "normal_attack", "msg": f"✨ 爱丽丝物理攻击! 暴击! 造成 {dmg} 点伤害!", "damage": dmg, "target": self.selected_target}
+                # 【修复】真正调用 take_damage 进行伤害结算
+                result = self.selected_target.take_damage(dmg)
+                actual_dmg = result['final_dmg']
+                
+                # 暴击判定
+                is_crit = random.random() < 0.1
+                if is_crit:
+                    actual_dmg = int(actual_dmg * 1.5)
+                    msg = f"✨ 爱丽丝物理攻击! 暴击! 造成 {actual_dmg} 点伤害!"
                 else:
-                    return {"type": "normal_attack", "msg": f"✨ 爱丽丝物理攻击! 造成 {dmg} 点伤害!", "damage": dmg, "target": self.selected_target}
+                    msg = f"✨ 爱丽丝物理攻击! 造成 {actual_dmg} 点伤害!"
+                
+                print(f"   🗡️ {self.name} 喊道: {phys_skill.name}! {phys_skill.desc}")
+                print(f"   > {msg}")
+                
+                return {"type": "normal_attack", "msg": msg, "damage": actual_dmg, "target": self.selected_target}
             
             else:
                 # 充能逻辑
@@ -227,18 +235,23 @@ class Player:
                 }
 
         elif self.name == "柚子":
-            # 柚子 AI
+            # 柚子 AI (修复版：智能选择目标)
             super_skill = get_skill("yuzu_super")
             normal_skill = get_skill("yuzu_normal")
+            
+            alive_enemies = [m for m in enemies if m.is_alive()]
+            if not alive_enemies:
+                return {"type": "no_target", "msg": "没有目标"}
+
+            # 寻找 HP 最低（威胁最大/最需要控制）的敌人
+            target = min(alive_enemies, key=lambda x: x.hp)
             
             if not self.has_used_super and random.random() < super_skill.chance:
                 self.has_used_super = True
                 # 执行眩晕效果
-                target = random.choice([m for m in enemies if m.is_alive()]) if enemies else None
-                if target:
-                    logs = super_skill.execute(self, [target], {})
-                    for log in logs:
-                        print(log)
+                logs = super_skill.execute(self, [target], {})
+                for log in logs:
+                    print(log)
                 return {
                     "type": "super_attack",
                     "msg": f"🎮 {self.name} 喊道: '{super_skill.name}' 造成了眩晕！",
@@ -246,11 +259,9 @@ class Player:
                 }
             else:
                 # 普通攻击
-                target = random.choice([m for m in enemies if m.is_alive()]) if enemies else None
-                if target:
-                    logs = normal_skill.execute(self, [target], {})
-                    for log in logs:
-                        print(log)
+                logs = normal_skill.execute(self, [target], {})
+                for log in logs:
+                    print(log)
                 return {
                     "type": "normal_attack",
                     "msg": f"💥 {self.name} 进行普通攻击。造成 {self.atk} 点伤害！",
@@ -258,28 +269,54 @@ class Player:
                 }
                 
         elif self.name == "小绿":
-            # 小绿 AI
-            heal_skill = get_skill("midori_heal")
-            # 【修复】增加打印语句
-            print(f"   🎨 {self.name} 喊道: {heal_skill.name}! {heal_skill.desc}")
+            # 小绿 AI (修复版：看全队血量)
+            # 检查是否有队友受伤
+            injured_players = [p for p in party if p != self and p.hp < p.max_hp]
             
-            # 治疗不需要目标列表，直接在 main.py 处理全队
-            return {
-                "type": "heal",
-                "msg": f"🎨 {self.name} 发动【{heal_skill.name}】！画出了治愈的颜料！",
-                "amount": 25 # 默认治疗量
-            }
+            if injured_players:
+                # 有伤员，进行治疗
+                heal_skill = get_skill("midori_heal")
+                print(f"   🎨 {self.name} 喊道: {heal_skill.name}! {heal_skill.desc}")
+                
+                # 治疗不需要目标列表，直接在 main.py 处理全队
+                return {
+                    "type": "heal",
+                    "msg": f"🎨 {self.name} 发动【{heal_skill.name}】！画出了治愈的颜料！",
+                    "amount": 25 # 默认治疗量
+                }
+            else:
+                # 大家都满血，进行普通攻击
+                alive_enemies = [m for m in enemies if m.is_alive()]
+                if alive_enemies:
+                    target = random.choice(alive_enemies)
+                    dmg = int(random.randint(self.atk - 5, self.atk + 5))
+                    result = target.take_damage(dmg)
+                    print(f"   🖌️ {self.name} 挥动画笔攻击！造成 {result['final_dmg']} 点伤害！")
+                    return {
+                        "type": "normal_attack",
+                        "msg": f"🖌️ {self.name} 进行了普通的画笔攻击。造成 {result['final_dmg']} 点伤害！",
+                        "damage": result['final_dmg']
+                    }
+                else:
+                    return {"type": "no_target", "msg": "没有目标"}
             
         elif self.name == "桃井":
-            # 桃井 AI
+            # 桃井 AI (修复版：真正的普通攻击)
             roll = random.random()
-            
+            alive_enemies = [m for m in enemies if m.is_alive()]
+            if not alive_enemies:
+                return {"type": "no_target", "msg": "没有目标"}
+
             if roll < 0.3:
-                # 普通攻击
+                # 普通攻击 (修复版：真正造成伤害)
+                target = random.choice(alive_enemies)
+                dmg = self.atk
+                result = target.take_damage(dmg)
+                print(f"   📝 {self.name} 进行了普通的投掷攻击。造成 {result['final_dmg']} 点伤害！")
                 return {
                     "type": "normal_attack",
-                    "msg": f"📝 {self.name} 进行了普通的投掷攻击。造成 {self.atk} 点伤害！",
-                    "damage": self.atk
+                    "msg": f"📝 {self.name} 进行了普通的投掷攻击。造成 {result['final_dmg']} 点伤害！",
+                    "damage": result['final_dmg']
                 }
             elif roll < 0.6:
                 # Debuff
