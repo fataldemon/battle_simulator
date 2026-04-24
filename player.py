@@ -1,5 +1,5 @@
 # player.py
-# 战斗模拟器 v14 - 玩家数据与行为逻辑模块 (模块化重构版)
+# 战斗模拟器 v14 - 玩家数据与行为逻辑模块 (模块化重构版 - 修正打印缺失)
 
 import random
 from skill import SKILL_REGISTRY, get_skill, AttackEffect, BuffEffect, DebuffEffect, StunEffect, HealEffect
@@ -182,6 +182,9 @@ class Player:
                 # 物理攻击
                 # 复用 AttackEffect 逻辑
                 dmg = int(random.randint(self.atk - 5, self.atk + 5))
+                # 【修复】增加打印语句
+                print(f"   🗡️ {self.name} 喊道: {phys_skill.name}! {phys_skill.desc}")
+                
                 if random.random() < 0.1:
                     dmg = int(dmg * 1.5)
                     return {"type": "normal_attack", "msg": f"✨ 爱丽丝物理攻击! 暴击! 造成 {dmg} 点伤害!", "damage": dmg, "target": self.selected_target}
@@ -191,6 +194,8 @@ class Player:
             else:
                 # 充能逻辑
                 self.energy += 1
+                # 【修复】增加打印语句
+                print(f"   ⚡ {self.name} 喊道: {charge_skill.name}! {charge_skill.desc}")
                 return {
                     "type": "alice_charge",
                     "msg": f"⚡ {self.name} 喊道: {charge_skill.name} -> 能量充填层数 -> {self.energy}"
@@ -230,6 +235,9 @@ class Player:
         elif self.name == "小绿":
             # 小绿 AI
             heal_skill = get_skill("midori_heal")
+            # 【修复】增加打印语句
+            print(f"   🎨 {self.name} 喊道: {heal_skill.name}! {heal_skill.desc}")
+            
             # 治疗不需要目标列表，直接在 main.py 处理全队
             return {
                 "type": "heal",
@@ -253,6 +261,10 @@ class Player:
                 effect_type = random.choice(["attack_down", "defense_down"])
                 skill_id = "momoi_debuff_atk" if effect_type == "attack_down" else "momoi_debuff_def"
                 skill = get_skill(skill_id)
+                
+                # 【修复】增加打印语句
+                print(f"   📝 {self.name} 喊道: {skill.name}! {skill.desc}")
+                
                 return {
                     "type": "plot_debuff",
                     "msg": f"📝 {self.name} 大喊：'{skill.name}'",
@@ -263,16 +275,25 @@ class Player:
                 effect_type = random.choice(["heal", "atk_up"])
                 amount = random.randint(15, 25)
                 if effect_type == "heal":
+                     # 【修复】增加打印语句，引用 skill.py 中的技能
+                     heal_skill = get_skill("momoi_heal")
+                     print(f"   📝 {self.name} 喊道: {heal_skill.name}! {heal_skill.desc}")
+                     
                      return {
                         "type": "plot_buff",
-                        "msg": f"📝 {self.name} 大喊：'剧本里写着大家充满了活力！'",
+                        "msg": f"📝 {self.name} 大喊：'{heal_skill.name}'",
                         "effect": "heal",
                         "amount": amount
                     }
                 else:
+                    # Atk Up Buff
+                    skill = get_skill("momoi_buff")
+                    # 【修复】增加打印语句
+                    print(f"   📝 {self.name} 喊道: {skill.name}! {skill.desc}")
+                    
                     return {
                         "type": "plot_buff",
-                        "msg": f"📝 {self.name} 大喊：'剧本里写着大家获得了力量的加持！'",
+                        "msg": f"📝 {self.name} 大喊：'{skill.name}'",
                         "effect": "atk_up",
                         "amount": int(self.atk * 0.2)
                     }

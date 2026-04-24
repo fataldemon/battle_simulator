@@ -268,6 +268,7 @@ SKILL_REGISTRY = {
     "momoi_debuff_def": DebuffEffect("剧情杀 (降低防御)", "剧本里写着BOSS的防御下降了", stat="defense", value=0.3, duration=2, icon="📉"),
     "momoi_debuff": DebuffEffect("剧情杀 (Debuff)", "剧本里写着BOSS的状态变差了", stat="atk", value=0.3, duration=2, icon="📉"),
     "momoi_buff": BuffEffect("剧情杀 (Buff)", "剧本里写着大家获得了力量", stat="atk", value=0.2, duration=2, icon="⚔️"),
+    "momoi_heal": HealEffect("剧本里写着大家充满了活力！", "全队恢复了 18 HP！", amount=18), # 新增桃井回复技能
 }
 
 # ==============================================================================
