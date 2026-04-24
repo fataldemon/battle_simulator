@@ -53,6 +53,48 @@ class AttackEffect(BaseSkillEffect):
                 logs.append(f"   💀 {target.name} 倒下了...")
         return logs
 
+class AoEAttackEffect(AttackEffect):
+    """群体攻击效果 (AOE)"""
+    def __init__(self, name, desc, multiplier=1.0, variance=0, is_crit=False, crit_mult=1.5, target_count=None):
+        # 初始化时显式标记为 AOE
+        # target_count: 如果为 None，则攻击所有目标；如果为整数，则随机攻击指定数量的目标
+        super().__init__(name, desc, multiplier, variance, is_crit, crit_mult, is_aoe=True)
+        self.target_count = target_count
+
+    def execute(self, caster, targets, params):
+        logs = []
+        logs.append(f"   ✨ {caster.name} 使用了群体攻击【{self.name}】！")
+        
+        # 筛选出存活的敌人
+        alive_targets = [t for t in targets if t.is_alive()]
+        
+        # 如果指定了 target_count，则从中随机选取
+        if self.target_count is not None and len(alive_targets) > 0:
+            count = min(self.target_count, len(alive_targets))
+            selected_targets = random.sample(alive_targets, count)
+        else:
+            selected_targets = alive_targets
+
+        for target in selected_targets:
+            base_dmg = caster.atk * self.multiplier
+            final_dmg = int(base_dmg + random.randint(-self.variance, self.variance))
+            
+            is_crit = False
+            if self.is_crit or random.random() < 0.1:
+                final_dmg = int(final_dmg * self.crit_mult)
+                is_crit = True
+            
+            result = target.take_damage(final_dmg)
+            
+            log_msg = f"   💥 {caster.name} 对 {target.name} 造成了 {result['final_dmg']} 点伤害!"
+            if is_crit:
+                log_msg += " (暴击!)"
+            logs.append(log_msg)
+            
+            if not target.is_alive():
+                logs.append(f"   💀 {target.name} 倒下了...")
+        return logs
+
 class HealEffect(BaseSkillEffect):
     """治疗/恢复效果"""
     def __init__(self, name, desc, amount=0, percent=0.0):
@@ -256,8 +298,8 @@ SKILL_REGISTRY = {
     
     # --- 玩家技能 ---
     "alice_charge": BaseSkillEffect("光啊！", "正在积蓄光之剑的能量", cost=0),
-    # 修改：爱丽丝的大招现在支持 AOE (全体攻击)
-    "alice_ex": AttackEffect("世界的法则即将崩坏！光哟！！！", "释放出覆盖全场的巨大电磁炮", multiplier=5.91, variance=0, is_crit=True, crit_mult=2.0, is_aoe=True),
+    # 修改：爱丽丝的大招现在使用 AoEAttackEffect 类型
+    "alice_ex": AoEAttackEffect("世界的法则即将崩坏！光哟！！！", "释放出覆盖全场的巨大电磁炮", multiplier=5.91, variance=0, is_crit=True, crit_mult=2.0),
     "alice_physical": AttackEffect("物理攻击", "挥舞光之剑进行物理打击", multiplier=1.0, variance=5),
     
     "yuzu_super": StunEffect("通关指令·改", "发动了必杀技，造成了眩晕", chance=0.4),
