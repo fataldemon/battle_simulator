@@ -1,15 +1,16 @@
 # main.py
-# 战斗模拟器 v21 - 主程序 (修复状态栏与重复台词 + 即时刷新)
+# 战斗模拟器 v30 - 主程序 (修复怪物移动时机 & 增加战后清扫重排)
 
 import argparse
 import random
 from monster import MONSTERS_DATA, Monster
 from player import PLAYERS_DATA, Player
+from utils import squeeze_move
 
 def init_game_random():
     """初始化游戏 - 随机副本模式"""
     print("=" * 50)
-    print("📜 团队副本模拟器 v21 (随机模式)")
+    print("📜 团队副本模拟器 v30 (修正移动阶段版)")
     print("=" * 50)
     
     low_level_pool = [m for m in MONSTERS_DATA if m['level'] <= 5]
@@ -65,7 +66,7 @@ def init_game_custom(args):
         return init_game_random()
 
     print("=" * 50)
-    print("📜 团队副本模拟器 v21 (自定义模式)")
+    print("📜 团队副本模拟器 v30 (修正移动阶段版)")
     print("=" * 50)
     
     enemy_team = []
@@ -137,7 +138,70 @@ def check_game_over(enemy_team, party):
         return True
     return False
 
-def process_player_actions(enemy_team, party):
+def setup_battle_field(enemy_team, party):
+    """
+    【v22 新增】初始化战场队列
+    将玩家和怪物混合成一个列表，并根据阵营分配初始位置。
+    """
+    # 初始状态：玩家在前，怪物在后
+    battle_field = party + enemy_team
+    
+    # 校准所有人的 position
+    for i, unit in enumerate(battle_field):
+        unit.position = i
+        
+    print("\n📍 战场队列已初始化！")
+    print(f"   我方站位：{[p.name for p in party]}")
+    print(f"   敌方站位：{[m.name for m in enemy_team]}")
+    
+    return battle_field
+
+def process_movement_phase(battle_field, enemy_team, party):
+    """
+    【v29 修复】移动阶段
+    移除了玩家在玩家回合时的怪物移动逻辑，防止坐标混乱。
+    """
+    print("\n--- 🏃 移动阶段 ---")
+    
+    # 1. 玩家（爱丽丝）移动逻辑
+    alice = None
+    for unit in battle_field:
+        if unit.name == "爱丽丝":
+            alice = unit
+            break
+            
+    if alice and alice.is_alive():
+        # 【v25 优化】简化输入：直接输入数字，相同即不动
+        # 【v26 修复】确保提示信息清晰可见
+        print(f"   >>> 爱丽丝当前位于第 {alice.position} 号位 <<<")
+        print(f"   >>> 请输入目标位置索引 (0-{len(battle_field)-1})，相同位置表示不动 <<<", flush=True)
+        try:
+            raw_input = input()
+            target_pos = int(raw_input)
+            
+            if target_pos == alice.position:
+                print(f"   >> 爱丽丝选择了原地待命。")
+            else:
+                squeeze_move(battle_field, alice, target_pos)
+        except ValueError:
+            print("   输入无效，爱丽丝原地不动。")
+        
+        # 【v25 新增】移动后立即刷新站位概览，方便确认
+        print("\n[战场站位概览]")
+        for i, unit in enumerate(battle_field):
+            if unit.is_alive():
+                # 【v26 修复】现在 party 参数可用了
+                prefix = "🟢" if unit in party else "🔴"
+                print(f"   {prefix} [{i}] {unit.name}")
+                
+    # 2. 队友 (桃井、小绿、柚子) 不移动 (保持阵型)
+            
+    # 3. 【v29 修复】移除了这里的怪物移动逻辑！
+    # 怪物现在只会在我方的“怪物行动阶段”才会移动。
+    # 这样可以保证玩家回合的稳定性。
+    print("   >> 此时并非怪物的回合，它们正在原地虎视眈眈……")
+
+def process_player_actions(battle_field, enemy_team, party):
     """处理玩家行动"""
     alice = None
     others = []
@@ -181,13 +245,11 @@ def process_player_actions(enemy_team, party):
             for m in enemy_team:
                 if m.is_alive():
                     if effect == "attack_down":
-                        # 【修复】将桃井的 Debuff 持续时间从 1 改为 3，以便在状态栏显示
                         m.add_status_effect("📉", "攻击力下降", 3, "attack_down", 0.3)
                         m.current_atk = int(m.base_atk * 0.7)
                         m.atk = m.current_atk
                         print(f"   > {m.name} 的攻击力下降了！")
                     elif effect == "defense_down":
-                        # 【修复】将桃井的 Debuff 持续时间从 1 改为 3
                         m.add_status_effect("📉", "防御力下降", 3, "defense_down", 0.2)
                         m.defense = int(m.base_defense * 0.8)
                         print(f"   > {m.name} 的防御力下降了！")
@@ -208,13 +270,13 @@ def process_player_actions(enemy_team, party):
                         p.add_status_effect("⚔️", "攻击力提升", 2, "atk_up", 0.2)
                 print(f"   > 全队攻击力提升了！")
         
-        # 【v21 追加】行动结束后，立即刷新一次状态显示，让玩家能即时看到 buff/debuff
+        # 【v21 追加】行动结束后，立即刷新一次状态显示
         print("\n   [即时状态刷新]")
         for m in enemy_team:
             if m.is_alive():
                 m.print_status()
 
-def process_monster_action(enemy_team, party):
+def process_monster_action(battle_field, enemy_team, party):
     """处理怪物行动"""
     for boss in enemy_team:
         if not boss.is_alive():
@@ -231,12 +293,15 @@ def process_monster_action(enemy_team, party):
         boss.decide_action(party)
 
 def main():
-    parser = argparse.ArgumentParser(description="战斗模拟器 v21")
+    parser = argparse.ArgumentParser(description="战斗模拟器 v30")
     parser.add_argument('--level', type=int, help='指定怪物总等级')
     parser.add_argument('--monster', type=str, help='指定怪物列表')
     args = parser.parse_args()
     
     enemy_team, party = init_game_custom(args)
+    
+    # 【v22 新增】初始化战场队列
+    battle_field = setup_battle_field(enemy_team, party)
     
     turn = 1
     MAX_TURNS = 50
@@ -249,24 +314,45 @@ def main():
             
         print(f"\n--- 第 {turn} 回合 ---")
         
-        # 显示所有怪物血条
+        # 【v30 新增】战场清理与重排
+        # 移除所有死亡的单位，确保队列紧凑，防止僵尸单位挡住路径
+        previous_len = len(battle_field)
+        battle_field = [u for u in battle_field if u.is_alive()]
+        
+        if len(battle_field) < previous_len:
+            print("\n🧹 战场清扫完成！倒下的队员已离场，剩余人员向前靠拢！")
+            # 重新校准位置索引
+            for i, unit in enumerate(battle_field):
+                unit.position = i
+            
+        # 【v22 新增】显示全场站位概览
+        print("\n[战场站位概览]")
+        for i, unit in enumerate(battle_field):
+            if unit.is_alive():
+                prefix = "🟢" if unit in party else "🔴"
+                print(f"   {prefix} [{i}] {unit.name}")
+        
+        # 【v22 新增】移动阶段 (传入 enemy_team 用于补位逻辑，以及 party 用于识别阵营)
+        process_movement_phase(battle_field, enemy_team, party)
+        
+        # 重新刷新血条和状态 (因为站位变了)
         print("\n[敌方状态]", flush=True)
         for m in enemy_team:
             if m.is_alive():
                 m.print_status()
         
-        # 显示玩家血条和状态图标
         print("[我方状态]", flush=True)
         for p in party:
             if p.is_alive():
                 p.print_status()
         
-        process_player_actions(enemy_team, party)
+        # 行动阶段
+        process_player_actions(battle_field, enemy_team, party)
         
         if check_game_over(enemy_team, party):
             break
             
-        process_monster_action(enemy_team, party)
+        process_monster_action(battle_field, enemy_team, party)
         
         for p in party:
             if p.is_alive():

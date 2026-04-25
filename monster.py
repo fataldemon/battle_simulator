@@ -1,8 +1,8 @@
 # monster.py
-# 战斗模拟器 v21 - 怪物数据与行为逻辑模块 (最终完整版 + 状态栏修复)
+# 战斗模拟器 v22 - 怪物数据与行为逻辑模块 (含定位系统与射程索敌)
 
 import random
-# 修复：导入所有需要用到的技能效果类，包括新增的 CleanseEffect
+# 导入所有需要用到的技能效果类
 from skill import SKILL_REGISTRY, get_skill, AttackEffect, BuffEffect, DebuffEffect, TrapEffect, SelfHealEffect, LifestealEffect, HealEffect, StunEffect, CleanseEffect
 
 class Monster:
@@ -13,7 +13,7 @@ class Monster:
         self.hp = self.max_hp
         self.base_atk = data["base_atk"]
         self.current_atk = self.base_atk
-        self.atk = self.base_atk  # 新增：为 AttackEffect 提供兼容属性
+        self.atk = self.base_atk  # 兼容技能模块
         
         # --- 防御属性 ---
         self.base_defense = data.get("base_defense", 10)
@@ -32,8 +32,11 @@ class Monster:
         self.reflect_turns = 0
         self.evade_next = False
         self.is_stunned = False 
+        
+        # 【v22 新增】定位系统
+        self.position = 0  # 初始位置默认为 0，将在游戏初始化时重新分配
 
-        # v12.1 新增：状态列表 (Buff/Debuff)
+        # v12 新增：状态列表 (Buff/Debuff)
         self.status_effects = []
 
     def add_status_effect(self, icon, name, duration, effect_type, value=0):
@@ -63,6 +66,18 @@ class Monster:
             elif status["effect"] == "defense_up":
                 self.defense = self.base_defense + status["value"]
 
+    def _find_valid_targets(self, targets, skill_range):
+        """
+        【v22 新增】根据射程寻找有效目标
+        """
+        valid_targets = []
+        for target in targets:
+            if target.is_alive():
+                distance = abs(target.position - self.position)
+                if distance <= skill_range:
+                    valid_targets.append(target)
+        return valid_targets
+
     def get_available_skills(self):
         """根据怪物特性返回可用的技能ID列表"""
         # 优先使用自定义技能表
@@ -86,7 +101,7 @@ class Monster:
 
     def decide_action(self, party_members):
         """
-        怪物AI：决定本回合行动 (模块化版)
+        怪物AI：决定本回合行动 (模块化版 + 射程索敌)
         """
         # 检查是否处于晕眩状态
         if self.is_stunned:
@@ -126,10 +141,14 @@ class Monster:
                 targets = [p for p in party_members if p.is_alive()]
                 logs = skill.execute(self, targets, {})
             else:
-                alive_players = [p for p in party_members if p.is_alive()]
-                if alive_players:
-                    target = random.choice(alive_players)
+                # 【v22 修改】使用射程索敌
+                valid_targets = self._find_valid_targets(party_members, skill.range)
+                if valid_targets:
+                    target = random.choice(valid_targets)
                     logs = skill.execute(self, [target], {})
+                else:
+                    print(f"   ⚠️ {self.name} 发现周围没有射程内的敌人！无法攻击。")
+                    return None
         
         elif isinstance(skill, BuffEffect):
             # 增益技能 (对自己)
@@ -137,13 +156,21 @@ class Monster:
             
         elif isinstance(skill, DebuffEffect):
             # 减益技能 (对敌人/玩家)
-            targets = [p for p in party_members if p.is_alive()]
-            logs = skill.execute(self, targets, {})
+            valid_targets = self._find_valid_targets(party_members, skill.range)
+            if valid_targets:
+                logs = skill.execute(self, valid_targets, {})
+            else:
+                print(f"   ⚠️ {self.name} 发现周围没有射程内的敌人！无法施法。")
+                return None
             
         elif isinstance(skill, TrapEffect):
             # 陷阱技能
-            targets = [p for p in party_members if p.is_alive()]
-            logs = skill.execute(self, targets, {})
+            valid_targets = self._find_valid_targets(party_members, skill.range)
+            if valid_targets:
+                logs = skill.execute(self, valid_targets, {})
+            else:
+                print(f"   ⚠️ {self.name} 发现周围没有射程内的敌人！无法放置陷阱。")
+                return None
             
         elif isinstance(skill, SelfHealEffect):
             # 自我恢复
@@ -151,13 +178,21 @@ class Monster:
             
         elif isinstance(skill, LifestealEffect):
             # 吸血
-            targets = [p for p in party_members if p.is_alive()]
-            logs = skill.execute(self, targets, {})
+            valid_targets = self._find_valid_targets(party_members, skill.range)
+            if valid_targets:
+                logs = skill.execute(self, valid_targets, {})
+            else:
+                print(f"   ⚠️ {self.name} 发现周围没有射程内的敌人！无法吸血。")
+                return None
             
         elif isinstance(skill, CleanseEffect):
             # 清除增益
-            targets = [p for p in party_members if p.is_alive()]
-            logs = skill.execute(self, targets, {})
+            valid_targets = self._find_valid_targets(party_members, skill.range)
+            if valid_targets:
+                logs = skill.execute(self, valid_targets, {})
+            else:
+                print(f"   ⚠️ {self.name} 发现周围没有射程内的敌人！无法施展。")
+                return None
             
         else:
             # 其他未知技能

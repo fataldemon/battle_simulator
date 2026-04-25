@@ -1,6 +1,6 @@
 # skill.py
-# 战斗模拟器 v21 - 技能模块化管理中心 (桃井台词内测版 + 爱丽丝充能更新)
-# 所有技能的定义和执行逻辑都在这里，方便扩展和管理
+# 战斗模拟器 v23 - 技能模块化管理中心 (全射程梯度优化版)
+# 核心改进：大幅调整射程分布，从单一的 1 和 99 扩展为 1-10 的完整梯度
 
 import random
 
@@ -10,23 +10,24 @@ import random
 
 class BaseSkillEffect:
     """技能效果的基类"""
-    def __init__(self, name, desc, cost=0):
+    def __init__(self, name, desc, cost=0, range=1):
         self.name = name
         self.desc = desc
         self.cost = cost
+        self.range = range
 
     def execute(self, caster, targets, params):
         raise NotImplementedError
 
 class AttackEffect(BaseSkillEffect):
     """单体/群体攻击效果"""
-    def __init__(self, name, desc, multiplier=1.0, variance=0, is_crit=False, crit_mult=1.5, is_aoe=False):
-        super().__init__(name, desc)
+    def __init__(self, name, desc, multiplier=1.0, variance=0, is_crit=False, crit_mult=1.5, is_aoe=False, range=1):
+        super().__init__(name, desc, range=range)
         self.multiplier = multiplier
         self.variance = variance
         self.is_crit = is_crit
         self.crit_mult = crit_mult
-        self.is_aoe = is_aoe  # 新增：是否为群体攻击
+        self.is_aoe = is_aoe
 
     def execute(self, caster, targets, params):
         logs = []
@@ -50,27 +51,23 @@ class AttackEffect(BaseSkillEffect):
             logs.append(log_msg)
             
             if not target.is_alive():
-                # 获取倒地台词，如果没有则使用默认文本
                 death_msg = getattr(target, 'death_msg', f"{target.name} 倒下了...")
+                # 【修复】修正转义字符错误
                 logs.append(f"   💀 {target.name} 倒下了... \"{death_msg}\"")
         return logs
 
 class AoEAttackEffect(AttackEffect):
     """群体攻击效果 (AOE)"""
-    def __init__(self, name, desc, multiplier=1.0, variance=0, is_crit=False, crit_mult=1.5, target_count=None):
-        # 初始化时显式标记为 AOE
-        # target_count: 如果为 None，则攻击所有目标；如果为整数，则随机攻击指定数量的目标
-        super().__init__(name, desc, multiplier, variance, is_crit, crit_mult, is_aoe=True)
+    def __init__(self, name, desc, multiplier=1.0, variance=0, is_crit=False, crit_mult=1.5, target_count=None, range=1):
+        super().__init__(name, desc, multiplier, variance, is_crit, crit_mult, is_aoe=True, range=range)
         self.target_count = target_count
 
     def execute(self, caster, targets, params):
         logs = []
         logs.append(f"   ✨ {caster.name} 使用了群体攻击【{self.name}】！")
         
-        # 筛选出存活的敌人
         alive_targets = [t for t in targets if t.is_alive()]
         
-        # 如果指定了 target_count，则从中随机选取
         if self.target_count is not None and len(alive_targets) > 0:
             count = min(self.target_count, len(alive_targets))
             selected_targets = random.sample(alive_targets, count)
@@ -94,15 +91,15 @@ class AoEAttackEffect(AttackEffect):
             logs.append(log_msg)
             
             if not target.is_alive():
-                # 获取倒地台词，如果没有则使用默认文本
                 death_msg = getattr(target, 'death_msg', f"{target.name} 倒下了...")
+                # 【修复】修正转义字符错误
                 logs.append(f"   💀 {target.name} 倒下了... \"{death_msg}\"")
         return logs
 
 class HealEffect(BaseSkillEffect):
     """治疗/恢复效果"""
-    def __init__(self, name, desc, amount=0, percent=0.0):
-        super().__init__(name, desc)
+    def __init__(self, name, desc, amount=0, percent=0.0, range=1):
+        super().__init__(name, desc, range=range)
         self.amount = amount
         self.percent = percent
 
@@ -125,8 +122,8 @@ class HealEffect(BaseSkillEffect):
 
 class BuffEffect(BaseSkillEffect):
     """增益效果 (对自己或队友)"""
-    def __init__(self, name, desc, stat="atk", value=0, duration=2, icon="⬆️"):
-        super().__init__(name, desc)
+    def __init__(self, name, desc, stat="atk", value=0, duration=2, icon="⬆️", range=1):
+        super().__init__(name, desc, range=range)
         self.stat = stat
         self.value = value
         self.duration = duration
@@ -144,8 +141,8 @@ class BuffEffect(BaseSkillEffect):
 
 class DebuffEffect(BaseSkillEffect):
     """减益效果 (对敌人)"""
-    def __init__(self, name, desc, stat="atk", value=0, duration=2, icon="⬇️"):
-        super().__init__(name, desc)
+    def __init__(self, name, desc, stat="atk", value=0, duration=2, icon="⬇️", range=1):
+        super().__init__(name, desc, range=range)
         self.stat = stat
         self.value = value
         self.duration = duration
@@ -163,8 +160,8 @@ class DebuffEffect(BaseSkillEffect):
 
 class StunEffect(BaseSkillEffect):
     """眩晕效果"""
-    def __init__(self, name, desc, chance=1.0):
-        super().__init__(name, desc)
+    def __init__(self, name, desc, chance=1.0, range=1):
+        super().__init__(name, desc, range=range)
         self.chance = chance
 
     def execute(self, caster, targets, params):
@@ -182,8 +179,8 @@ class StunEffect(BaseSkillEffect):
 
 class SelfHealEffect(BaseSkillEffect):
     """自我恢复效果 (针对怪物)"""
-    def __init__(self, name, desc, amount=0, percent=0.0):
-        super().__init__(name, desc)
+    def __init__(self, name, desc, amount=0, percent=0.0, range=1):
+        super().__init__(name, desc, range=range)
         self.amount = amount
         self.percent = percent
 
@@ -201,8 +198,8 @@ class SelfHealEffect(BaseSkillEffect):
 
 class LifestealEffect(BaseSkillEffect):
     """吸血效果"""
-    def __init__(self, name, desc, multiplier=1.5, ratio=0.5):
-        super().__init__(name, desc)
+    def __init__(self, name, desc, multiplier=1.5, ratio=0.5, range=1):
+        super().__init__(name, desc, range=range)
         self.multiplier = multiplier
         self.ratio = ratio
 
@@ -221,15 +218,15 @@ class LifestealEffect(BaseSkillEffect):
         
         logs.append(f"   🩸 {caster.name} 吸取了 {result['final_dmg']} 点生命，恢复了 {heal_val} HP！")
         if not target.is_alive():
-            # 获取倒地台词，如果没有则使用默认文本
             death_msg = getattr(target, 'death_msg', f"{target.name} 倒下了...")
+            # 【修复】修正转义字符错误
             logs.append(f"   💀 {target.name} 倒下了... \"{death_msg}\"")
         return logs
 
 class TrapEffect(BaseSkillEffect):
     """陷阱/束缚效果"""
-    def __init__(self, name, desc):
-        super().__init__(name, desc)
+    def __init__(self, name, desc, range=1):
+        super().__init__(name, desc, range=range)
 
     def execute(self, caster, targets, params):
         logs = []
@@ -242,8 +239,8 @@ class TrapEffect(BaseSkillEffect):
 
 class CleanseEffect(BaseSkillEffect):
     """清除增益效果"""
-    def __init__(self, name, desc):
-        super().__init__(name, desc)
+    def __init__(self, name, desc, range=1):
+        super().__init__(name, desc, range=range)
 
     def execute(self, caster, targets, params):
         logs = []
@@ -259,73 +256,80 @@ class CleanseEffect(BaseSkillEffect):
         return logs
 
 # ==============================================================================
-# 2. 技能注册表 (Skill Registry)
+# 2. 技能注册表 (Skill Registry) - v23 全射程梯度版
 # ==============================================================================
 
 SKILL_REGISTRY = {
-    # --- 基础攻击 ---
-    "basic_attack": AttackEffect("普通攻击", "进行了一次普通的攻击", multiplier=1.0, variance=5),
-    "heavy_strike": AttackEffect("蓄力重击", "发动了强力的一击", multiplier=1.5, variance=10),
+    # --- 基础攻击 (近战基准) ---
+    "basic_attack": AttackEffect("普通攻击", "进行了一次普通的攻击", multiplier=1.0, variance=5, range=1),
     
-    # --- 怪物特有技能 ---
-    "fireball": AttackEffect("火焰球", "发射了灼热的火焰球", multiplier=1.8, variance=5),
-    "shield": BuffEffect("开启护盾", "展开了防御护盾", stat="defense", value=15, duration=2, icon="🛡️"),
-    "cry": DebuffEffect("嚎叫 (降低敌方攻击)", "发出了令人胆寒的嚎叫", stat="atk", value=0.2, duration=2, icon="😱"),
-    "berserk": AttackEffect("狂暴一击", "进入了狂暴状态", multiplier=2.0, variance=10),
-    "auto_repair": SelfHealEffect("自我修复", "启动了紧急维修程序", amount=20),
-    "emp_pulse": DebuffEffect("电磁脉冲 (降低全队防御)", "释放了EMP干扰波", stat="defense", value=0.3, duration=2, icon="⚡"),
-    "web_trap": TrapEffect("蛛网束缚", "布置了致命的蛛网陷阱"),
-    "earthquake": AttackEffect("地震术", "引发了剧烈的地震", multiplier=0.8, variance=10),
+    # --- 玩家技能 (Team Skills) ---
+    # 爱丽丝：普攻稍微远一点，毕竟是电磁炮
+    "alice_charge": BaseSkillEffect("光啊！赐予我力量！", "正在积蓄光之剑的能量", cost=0, range=1),
+    "alice_ex": AoEAttackEffect("世界的法则即将崩坏！光哟！！！","释放出覆盖全场的巨大电磁炮", multiplier=5.91, variance=0, is_crit=True, crit_mult=2.0, range=99),
+    "alice_physical": AttackEffect("光之剑，出鞘吧", "光之剑出鞘，斩向敌人！", multiplier=1.0, variance=5, range=2), 
     
-    # --- 补充遗漏的特色技能 ---
-    "slime_bounce": AttackEffect("弹跳撞击", "弹跳着发起攻击", multiplier=0.8, variance=3),
-    "acid_spit": AttackEffect("酸液喷射", "喷出了腐蚀性酸液", multiplier=1.2, variance=5),
-    "throw_rock": AttackEffect("投掷石块", "投掷了尖锐的石块", multiplier=1.3, variance=8),
-    "horn_charge": AttackEffect("角撞", "用犄角发起冲锋", multiplier=1.1, variance=0),
-    "charge": AttackEffect("冲撞", "向前猛冲撞击", multiplier=2.0, variance=5),
-    "vine_lash": AttackEffect("藤蔓横扫", "甩动藤蔓进行攻击", multiplier=0.6, variance=5),
-    "bite": AttackEffect("撕咬", "张开大口咬住敌人", multiplier=1.2, variance=3),
-    "scratch": AttackEffect("猫爪乱抓", "用利爪快速抓挠", multiplier=1.0, variance=5),
-    "phase_shift": BuffEffect("相位闪烁", "融入阴影中闪避下次攻击", stat="evade", value=1, duration=1, icon="👻"),
-    "crush_claw": AttackEffect("巨钳粉碎", "用巨钳狠狠夹碎敌人", multiplier=1.3, variance=0),
-    "shell_defense": BuffEffect("缩壳防御", "缩进壳里大幅提升防御", stat="defense", value=20, duration=2, icon="🐚"),
-    "emp_hammer": AttackEffect("电磁重锤", "用电磁脉冲锤猛烈砸击", multiplier=1.3, variance=5),
-    "shadow_kick": AttackEffect("影踢", "从阴影中突袭踢击", multiplier=1.1, variance=0),
-    "acid_bite": AttackEffect("酸液咬合", "用酸液腐蚀的牙齿咬合", multiplier=1.0, variance=5),
-    "heavy_stomp": AttackEffect("重踏", "沉重地踩踏地面", multiplier=1.2, variance=10),
-    "dragon_wing_slap": AttackEffect("龙翼拍击", "用巨大的龙翼横扫", multiplier=1.5, variance=5),
-    "dragon_breath": AttackEffect("龙息吐息", "喷出毁灭性的龙息", multiplier=1.5, variance=10),
-    "abyssal_gaze": AttackEffect("深渊凝视", "用空洞的眼神注视敌人", multiplier=1.2, variance=5),
-    "void_collapse": CleanseEffect("视界崩坏", "清除我方增益效果"),
-    "red_pen_mark": AttackEffect("红笔批改", "用红笔精准批注弱点", multiplier=1.2, variance=0),
-    "calculation": AttackEffect("精确计算", "经过精密计算后的攻击", multiplier=2.5, variance=0, is_crit=True, crit_mult=2.0), # Simplified to crit attack
-    "high_speed_calculation": AttackEffect("高速计算", "高速运算后的连续打击", multiplier=2.5, variance=0, is_crit=True, crit_mult=2.0),
-    "critical_hit": AttackEffect("暴击", "发动了必定暴击的攻击", multiplier=2.0, variance=0, is_crit=True, crit_mult=2.0),
-    "life_steal": LifestealEffect("生命汲取", "吸取敌人的生命力", multiplier=1.5, ratio=0.5),
+    # 柚子：突击手，短距高爆发
+    "yuzu_super": StunEffect("Hit Stop!", "时间停止！强制打断！", chance=0.4, range=3),
+    "yuzu_normal": AttackEffect("普通攻击", "请别靠近我……", multiplier=1.0, variance=0, range=2),
     
-    # --- 玩家技能 ---
-    "alice_charge": BaseSkillEffect("光啊！赐予我力量！", "正在积蓄光之剑的能量", cost=0),
-    # 修改：爱丽丝的大招现在使用 AoEAttackEffect 类型
-    "alice_ex": AoEAttackEffect("世界的法则即将崩坏！光哟！！！","释放出覆盖全场的巨大电磁炮", multiplier=5.91, variance=0, is_crit=True, crit_mult=2.0),
-    # 修改：爱丽丝的普攻名称更改为老师指定的名字
-    "alice_physical": AttackEffect("光之剑，出鞘吧", "光之剑出鞘，斩向敌人！", multiplier=1.0, variance=5),
+    # 桃井 & 小绿：后方支援，射程较远
+    "momoi_normal": AttackEffect("内测独占技能", "嘿嘿，这可是只有内测玩家才能看到的秘密招式！", multiplier=1.0, variance=5, range=5),
+    "midori_normal": AttackEffect("草稿涂色", "草稿涂色！请多指教！", multiplier=1.0, variance=5, range=4),
     
-    # --- 修改柚子的技能 (v18 柚子人设强化版) ---
-    "yuzu_super": StunEffect("Hit Stop!", "时间停止！强制打断！", chance=0.4),
-    "yuzu_normal": AttackEffect("普通攻击", "请别靠近我……", multiplier=1.0, variance=0),
+    "midori_heal": HealEffect("艺术润色", "画出了治愈的颜料", amount=25, range=7),
     
-    # --- 修改桃井和小绿的技能 (v20 内测玩家版) ---
-    "momoi_normal": AttackEffect("内测独占技能", "嘿嘿，这可是只有内测玩家才能看到的秘密招式！【内测·独占技能】！", multiplier=1.0, variance=5),
-    "midori_normal": AttackEffect("草稿涂色", "草稿涂色！请多指教！", multiplier=1.0, variance=5),
+    "momoi_debuff_atk": DebuffEffect("剧情杀 (降低攻击)", "为了让主角赢得漂亮，BOSS 的智商下线了！", stat="atk", value=0.3, duration=2, icon="📉", range=6),
+    "momoi_debuff_def": DebuffEffect("剧情杀 (降低防御)", "为了让主角赢得漂亮，BOSS 的智商下线了！", stat="defense", value=0.3, duration=2, icon="📉", range=6),
+    "momoi_debuff": DebuffEffect("剧情杀 (Debuff)", "为了让主角赢得漂亮，BOSS 的智商下线了！", stat="atk", value=0.3, duration=2, icon="📉", range=6),
+    "momoi_buff": BuffEffect("剧情杀 (Buff)", "为了收视率，主角团必须加强！", stat="atk", value=0.2, duration=2, icon="⚔️", range=5),
+    "momoi_heal": HealEffect("剧本里写着大家充满了活力！", "插入一段感人至深的回忆杀！", amount=18, range=7),
     
-    "midori_heal": HealEffect("艺术润色", "画出了治愈的颜料", amount=25),
+    # --- 怪物特有技能 (Monster Skills) ---
     
-    # --- 修正桃井的技能 (v17 优化版) ---
-    "momoi_debuff_atk": DebuffEffect("剧情杀 (降低攻击)", "为了让主角赢得漂亮，BOSS 的智商下线了！", stat="atk", value=0.3, duration=2, icon="📉"),
-    "momoi_debuff_def": DebuffEffect("剧情杀 (降低防御)", "为了让主角赢得漂亮，BOSS 的智商下线了！", stat="defense", value=0.3, duration=2, icon="📉"),
-    "momoi_debuff": DebuffEffect("剧情杀 (Debuff)", "为了让主角赢得漂亮，BOSS 的智商下线了！", stat="atk", value=0.3, duration=2, icon="📉"),
-    "momoi_buff": BuffEffect("剧情杀 (Buff)", "为了收视率，主角团必须加强！", stat="atk", value=0.2, duration=2, icon="⚔️"),
-    "momoi_heal": HealEffect("剧本里写着大家充满了活力！", "插入一段感人至深的回忆杀！", amount=18), # 新增桃井回复技能
+    # 【近战梯队 Range 1-3】
+    "heavy_strike": AttackEffect("蓄力重击", "发动了强力的一击", multiplier=1.5, variance=10, range=2),
+    "berserk": AttackEffect("狂暴一击", "进入了狂暴状态", multiplier=2.0, variance=10, range=2),
+    "slime_bounce": AttackEffect("弹跳撞击", "弹跳着发起攻击", multiplier=0.8, variance=3, range=2),
+    "horn_charge": AttackEffect("角撞", "用犄角发起冲锋", multiplier=1.1, variance=0, range=2),
+    "charge": AttackEffect("冲撞", "向前猛冲撞击", multiplier=2.0, variance=5, range=3),
+    "bite": AttackEffect("撕咬", "张开大口咬住敌人", multiplier=1.2, variance=3, range=2),
+    "scratch": AttackEffect("猫爪乱抓", "用利爪快速抓挠", multiplier=1.0, variance=5, range=2),
+    "crush_claw": AttackEffect("巨钳粉碎", "用巨钳狠狠夹碎敌人", multiplier=1.3, variance=0, range=2),
+    "emp_hammer": AttackEffect("电磁重锤", "用电磁脉冲锤猛烈砸击", multiplier=1.3, variance=5, range=2),
+    "shadow_kick": AttackEffect("影踢", "从阴影中突袭踢击", multiplier=1.1, variance=0, range=2),
+    "acid_bite": AttackEffect("酸液咬合", "用酸液腐蚀的牙齿咬合", multiplier=1.0, variance=5, range=2),
+    "heavy_stomp": AttackEffect("重踏", "沉重地踩踏地面", multiplier=1.2, variance=10, range=3),
+    "life_steal": LifestealEffect("生命汲取", "吸取敌人的生命力", multiplier=1.5, ratio=0.5, range=3),
+    
+    # 【中程梯队 Range 4-6】
+    "fireball": AttackEffect("火焰球", "发射了灼热的火焰球", multiplier=1.8, variance=5, range=5),
+    "vine_lash": AttackEffect("藤蔓横扫", "甩动藤蔓进行攻击", multiplier=0.6, variance=5, range=4),
+    "throw_rock": AttackEffect("投掷石块", "投掷了尖锐的石块", multiplier=1.3, variance=8, range=6),
+    "dragon_wing_slap": AttackEffect("龙翼拍击", "用巨大的龙翼横扫", multiplier=1.5, variance=5, range=5),
+    "web_trap": TrapEffect("蛛网束缚", "布置了致命的蛛网陷阱", range=5),
+    "cry": DebuffEffect("嚎叫 (降低敌方攻击)", "发出了令人胆寒的嚎叫", stat="atk", value=0.2, duration=2, icon="😱", range=6),
+    
+    # 【远程梯队 Range 7-10】
+    "acid_spit": AttackEffect("酸液喷射", "喷出了腐蚀性酸液", multiplier=1.2, variance=5, range=8),
+    "dragon_breath": AttackEffect("龙息吐息", "喷出毁灭性的龙息", multiplier=1.5, variance=10, range=9),
+    "abyssal_gaze": AttackEffect("深渊凝视", "用空洞的眼神注视敌人", multiplier=1.2, variance=5, range=7),
+    
+    # 【优香大人的精准打击 (假设她是某种精英怪) Range 8-10】
+    "red_pen_mark": AttackEffect("红笔批改", "用红笔精准批注弱点", multiplier=1.2, variance=0, range=8),
+    "calculation": AttackEffect("精确计算", "经过精密计算后的攻击", multiplier=2.5, variance=0, is_crit=True, crit_mult=2.0, range=8),
+    "high_speed_calculation": AttackEffect("高速计算", "高速运算后的连续打击", multiplier=2.5, variance=0, is_crit=True, crit_mult=2.0, range=9),
+    "critical_hit": AttackEffect("暴击", "发动了必定暴击的攻击", multiplier=2.0, variance=0, is_crit=True, crit_mult=2.0, range=10),
+    
+    # 【自身增益/特殊机制 (Self-Buffs)】
+    "shield": BuffEffect("开启护盾", "展开了防御护盾", stat="defense", value=15, duration=2, icon="🛡️", range=1),
+    "auto_repair": SelfHealEffect("自我修复", "启动了紧急维修程序", amount=20, range=1),
+    "phase_shift": BuffEffect("相位闪烁", "融入阴影中闪避下次攻击", stat="evade", value=1, duration=1, icon="👻", range=1),
+    "shell_defense": BuffEffect("缩壳防御", "缩进壳里大幅提升防御", stat="defense", value=20, duration=2, icon="🐚", range=1),
+    
+    # 【超远程/全屏 (Full Screen)】
+    "earthquake": AttackEffect("地震术", "引发了剧烈的地震", multiplier=0.8, variance=10, range=99),
+    "void_collapse": CleanseEffect("视界崩坏", "清除我方增益效果", range=99),
 }
 
 # ==============================================================================

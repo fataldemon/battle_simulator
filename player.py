@@ -1,5 +1,5 @@
 # player.py
-# 战斗模拟器 v19 - 玩家数据与行为逻辑模块 (全员台词人设强化版)
+# 战斗模拟器 v31 - 玩家数据与行为逻辑模块 (含定位系统与按位置索敌 & 目标提示)
 
 import random
 from skill import SKILL_REGISTRY, get_skill, AttackEffect, BuffEffect, DebuffEffect, StunEffect, HealEffect
@@ -18,6 +18,9 @@ class Player:
         self.is_stunned = False # 新增：被束缚状态
         self.death_msg = data.get("death_msg", "") # 新增：倒地台词
         
+        # 【v22 新增】定位系统
+        self.position = 0  # 初始位置默认为 0，将在游戏初始化时重新分配
+
         # v12 新增：状态列表 (Buff/Debuff)
         self.status_effects = []
 
@@ -67,9 +70,21 @@ class Player:
         
         print(f"   {self.name}: [{bar}] {self.hp}/{self.max_hp}{status_str}")
 
+    def _find_valid_targets(self, enemies, skill_range):
+        """
+        【v22 新增】根据射程寻找有效目标
+        """
+        valid_targets = []
+        for enemy in enemies:
+            if enemy.is_alive():
+                distance = abs(enemy.position - self.position)
+                if distance <= skill_range:
+                    valid_targets.append(enemy)
+        return valid_targets
+
     def get_action(self, enemies=None, party=None):
         """
-        获取玩家行动 (模块化版)
+        获取玩家行动 (模块化版 + 射程索敌 + 按位置索敌 v31)
         """
         # 检查是否处于束缚状态
         if self.is_stunned:
@@ -104,6 +119,18 @@ class Player:
                 energy_bar = "[" + " ".join(cells) + "]"
             # --------------------------------
 
+            # 【v31 新增】计算可攻击的目标列表
+            # 充能不需要目标
+            # EX 技能是全图 AOE，可以攻击所有活着的敌人
+            # 物理攻击需要检测射程
+            
+            ex_targets = alive_enemies # EX 技能全图
+            phys_targets = self._find_valid_targets(enemies, phys_skill.range)
+            
+            # 格式化目标列表字符串
+            ex_target_str = ", ".join([f"{e.name}[{e.position}]" for e in ex_targets]) if ex_targets else "无"
+            phys_target_str = ", ".join([f"{t.name}[{t.position}]" for t in phys_targets]) if phys_targets else "无"
+
             print(f"\n   >> 爱丽丝，请做出你的行动！(能量: {energy_bar})")
             print(f"   [1] {charge_skill.name}")
             print(f"       说明: {charge_skill.desc}")
@@ -120,32 +147,70 @@ class Player:
             
             print(f"   [2] {ex_skill.name}{ex_status}")
             print(f"       说明: {ex_skill.desc}")
+            print(f"       可攻击目标: {ex_target_str}")
+            
             print(f"   [3] {phys_skill.name}")
             print(f"       说明: {phys_skill.desc}")
+            print(f"       可攻击目标: {phys_target_str}")
             
             print(f"\n   >>> 请输入指令：")
-            print(f"   格式：目标序号-技能序号 (例如：1-2)")
+            print(f"   格式：位置编号-技能序号 (例如：4-3)")
             
             while True:
                 try:
                     combined_input = input().strip()
-                    target_idx = 0 
+                    target_pos = None 
                     skill_idx = 1  
                     
                     if '-' in combined_input:
                         parts = combined_input.split('-')
-                        target_idx = int(parts[0]) - 1
-                        skill_idx = int(parts[1])
+                        try:
+                            # 新逻辑：直接读取位置坐标
+                            target_pos = int(parts[0])
+                            skill_idx = int(parts[1])
+                        except ValueError:
+                            print("   ❌ 输入格式错误，请使用 '位置-技能' 格式 (例如 4-3)")
+                            continue
                     else:
-                        skill_idx = int(combined_input)
-                        target_idx = 0
+                        try:
+                            skill_idx = int(combined_input)
+                            target_pos = None # 未指定位置
+                        except ValueError:
+                            print("   ❌ 输入无效，请输入数字")
+                            continue
 
-                    if 0 <= target_idx < len(alive_enemies):
-                        self.selected_target = alive_enemies[target_idx]
+                    # 根据位置寻找目标
+                    potential_target = None
+                    if target_pos is not None:
+                        # 遍历敌人列表，寻找 position 匹配的对象
+                        for enemy in alive_enemies:
+                            if enemy.position == target_pos:
+                                potential_target = enemy
+                                break
+                        
+                        if potential_target is None:
+                            print(f"   ❌ 警告：第 {target_pos} 号位没有找到敌人！(可能是空位或队友)")
+                            continue
                     else:
-                        print(f"   目标序号无效 (1-{len(alive_enemies)})，默认攻击第一个目标")
-                        self.selected_target = alive_enemies[0]
+                        # 如果没指定位置，默认攻击第一个敌人（兼容旧习惯）
+                        if alive_enemies:
+                            potential_target = alive_enemies[0]
+                        else:
+                            potential_target = None
                     
+                    # 检查射程
+                    if skill_idx == 3: # 物理攻击
+                        skill_range = phys_skill.range
+                        if potential_target:
+                            dist = abs(potential_target.position - self.position)
+                            if dist > skill_range:
+                                print(f"   ❌ 目标太远啦！射程只有 {skill_range}，距离是 {dist}！")
+                                print(f"   请选择射程内的目标，或者取消攻击。")
+                                continue
+                        
+                    elif skill_idx == 2: # EX 技能 (全屏)
+                        pass # 不需要检查，因为是 AOE
+
                     if skill_idx not in [1, 2, 3]:
                         print(f"   技能序号无效 (1-3)，默认执行充能")
                         skill_idx = 1
@@ -159,14 +224,13 @@ class Player:
 
                 except ValueError:
                     print("   输入格式错误，默认目标1，技能1 (充能)")
-                    self.selected_target = alive_enemies[0]
+                    potential_target = alive_enemies[0] if alive_enemies else None
                     skill_idx = 1
                     break
 
             # 执行技能
             if skill_idx == 2:
                 # 释放大招 (特殊逻辑：消耗能量并增加伤害)
-                # 为了保持模块化，我们尽量复用 AttackEffect 的描述，但计算逻辑需要单独处理
                 base_multiplier = ex_skill.multiplier
                 energy_bonus = 0.5 
                 crit_chance = 0.15
@@ -200,7 +264,7 @@ class Player:
                     "msg": f"🌟 {self.name} 喊道: {ex_skill.name}",
                     "damage": damage,
                     "is_crit": is_crit,
-                    "target": self.selected_target
+                    "target": potential_target
                 }
             
             elif skill_idx == 3:
@@ -208,7 +272,7 @@ class Player:
                 dmg = int(random.randint(self.atk - 5, self.atk + 5))
                 
                 # 【修复】真正调用 take_damage 进行伤害结算
-                result = self.selected_target.take_damage(dmg)
+                result = potential_target.take_damage(dmg)
                 actual_dmg = result['final_dmg']
                 
                 # 暴击判定
@@ -222,7 +286,7 @@ class Player:
                 print(f"   🗡️ {self.name} 喊道: {phys_skill.name}! {phys_skill.desc}")
                 print(f"   > {msg}")
                 
-                return {"type": "normal_attack", "msg": msg, "damage": actual_dmg, "target": self.selected_target}
+                return {"type": "normal_attack", "msg": msg, "damage": actual_dmg, "target": potential_target}
             
             else:
                 # 充能逻辑
@@ -235,41 +299,47 @@ class Player:
                 }
 
         elif self.name == "柚子":
-            # 柚子 AI (修复版：智能选择目标)
+            # 柚子 AI (修复版：智能选择目标 + 射程检测)
             super_skill = get_skill("yuzu_super")
             normal_skill = get_skill("yuzu_normal")
             
-            alive_enemies = [m for m in enemies if m.is_alive()]
-            if not alive_enemies:
+            # 寻找射程内的敌人
+            valid_targets = self._find_valid_targets(enemies, normal_skill.range)
+            
+            if not valid_targets:
+                print(f"   ⚠️ {self.name} 发现周围没有射程内的敌人！")
                 return {"type": "no_target", "msg": "没有目标"}
 
-            # 寻找 HP 最低（威胁最大/最需要控制）的敌人
-            target = min(alive_enemies, key=lambda x: x.hp)
+            # 优先攻击 HP 最低的
+            target = min(valid_targets, key=lambda x: x.hp)
             
             if not self.has_used_super and random.random() < super_skill.chance:
                 self.has_used_super = True
-                # 执行眩晕效果
-                logs = super_skill.execute(self, [target], {})
-                for log in logs:
-                    print(log)
-                return {
-                    "type": "super_attack",
-                    "msg": f"🎮 {self.name} 喊道: '{super_skill.name}' 造成了眩晕！",
-                    "effect": "stun"
-                }
-            else:
-                # 普通攻击
-                logs = normal_skill.execute(self, [target], {})
-                for log in logs:
-                    print(log)
-                return {
-                    "type": "normal_attack",
-                    "msg": f"💥 {self.name} 进行普通攻击。造成 {self.atk} 点伤害！",
-                    "damage": self.atk
-                }
+                # 检查大招射程
+                valid_super_targets = self._find_valid_targets(enemies, super_skill.range)
+                if valid_super_targets:
+                    # 执行眩晕效果
+                    logs = super_skill.execute(self, [target], {})
+                    for log in logs:
+                        print(log)
+                    return {
+                        "type": "super_attack",
+                        "msg": f"🎮 {self.name} 喊道: '{super_skill.name}' 造成了眩晕！",
+                        "effect": "stun"
+                    }
+            
+            # 普通攻击
+            logs = normal_skill.execute(self, [target], {})
+            for log in logs:
+                print(log)
+            return {
+                "type": "normal_attack",
+                "msg": f"💥 {self.name} 进行普通攻击。造成 {self.atk} 点伤害！",
+                "damage": self.atk
+            }
                 
         elif self.name == "小绿":
-            # 小绿 AI (修复版：看全队血量)
+            # 小绿 AI (修复版：看全队血量 + 射程检测)
             # 检查是否有队友受伤
             injured_players = [p for p in party if p != self and p.hp < p.max_hp]
             
@@ -286,9 +356,9 @@ class Player:
                 }
             else:
                 # 大家都满血，进行普通攻击
-                alive_enemies = [m for m in enemies if m.is_alive()]
-                if alive_enemies:
-                    target = random.choice(alive_enemies)
+                valid_targets = self._find_valid_targets(enemies, get_skill('midori_normal').range)
+                if valid_targets:
+                    target = random.choice(valid_targets)
                     dmg = self.atk
                     result = target.take_damage(dmg)
                     # 【v19 更新】使用新的台词
@@ -302,15 +372,18 @@ class Player:
                     return {"type": "no_target", "msg": "没有目标"}
             
         elif self.name == "桃井":
-            # 桃井 AI (修复版：真正的普通攻击)
+            # 桃井 AI (修复版：真正的普通攻击 + 射程检测)
             roll = random.random()
-            alive_enemies = [m for m in enemies if m.is_alive()]
-            if not alive_enemies:
+            
+            # 查找射程内的敌人
+            valid_targets = self._find_valid_targets(enemies, get_skill('momoi_normal').range)
+            
+            if not valid_targets:
                 return {"type": "no_target", "msg": "没有目标"}
 
             if roll < 0.3:
                 # 普通攻击 (修复版：真正造成伤害)
-                target = random.choice(alive_enemies)
+                target = random.choice(valid_targets)
                 dmg = self.atk
                 result = target.take_damage(dmg)
                 # 【v19 更新】使用新的台词
