@@ -1,5 +1,5 @@
 # player.py
-# 战斗模拟器 v31 - 玩家数据与行为逻辑模块 (含定位系统与按位置索敌 & 目标提示)
+# 战斗模拟器 v32 - 玩家数据与行为逻辑模块 (含定位系统与按位置索敌 & 目标提示 & 语音台词增强版)
 
 import random
 from skill import SKILL_REGISTRY, get_skill, AttackEffect, BuffEffect, DebuffEffect, StunEffect, HealEffect
@@ -84,7 +84,7 @@ class Player:
 
     def get_action(self, enemies=None, party=None):
         """
-        获取玩家行动 (模块化版 + 射程索敌 + 按位置索敌 v31)
+        获取玩家行动 (模块化版 + 射程索敌 + 按位置索敌 v31 + 语音台词增强版 v32)
         """
         # 检查是否处于束缚状态
         if self.is_stunned:
@@ -154,7 +154,7 @@ class Player:
             print(f"       可攻击目标: {phys_target_str}")
             
             print(f"\n   >>> 请输入指令：")
-            print(f"   格式：位置编号-技能序号 (例如：4-3)")
+            print(f"   格式：敌人位置编号-技能序号 (例如：4-3)")
             
             while True:
                 try:
@@ -169,7 +169,7 @@ class Player:
                             target_pos = int(parts[0])
                             skill_idx = int(parts[1])
                         except ValueError:
-                            print("   ❌ 输入格式错误，请使用 '位置-技能' 格式 (例如 4-3)")
+                            print("   ❌ 输入格式错误，请使用 '敌人位置-技能' 格式 (例如 4-3)")
                             continue
                     else:
                         try:
@@ -257,7 +257,7 @@ class Player:
                     if not target.is_alive():
                         # 获取倒地台词，如果没有则使用默认文本
                         death_msg = getattr(target, 'death_msg', f"{target.name} 倒下了...")
-                        print(f"   💀 {target.name} 倒下了... \"{death_msg}\"")
+                        print(f"   💀 {target.name} 倒下了... '{death_msg}'")
                 
                 return {
                     "type": "alice_ex",
@@ -299,7 +299,7 @@ class Player:
                 }
 
         elif self.name == "柚子":
-            # 柚子 AI (修复版：智能选择目标 + 射程检测)
+            # 柚子 AI (修复版：智能选择目标 + 射程检测 + 语音台词增强版 v32)
             super_skill = get_skill("yuzu_super")
             normal_skill = get_skill("yuzu_normal")
             
@@ -318,6 +318,9 @@ class Player:
                 # 检查大招射程
                 valid_super_targets = self._find_valid_targets(enemies, super_skill.range)
                 if valid_super_targets:
+                    # 【v32 新增】播放大招语音
+                    print(f"   🎮 {self.name} 喊道: 'Hit Stop!' 时间停止！强制打断！")
+                    
                     # 执行眩晕效果
                     logs = super_skill.execute(self, [target], {})
                     for log in logs:
@@ -329,6 +332,8 @@ class Player:
                     }
             
             # 普通攻击
+            # 【v32 新增】播放普攻语音
+            print(f"   🎮 {self.name} 喊道: '请别靠近我……'")
             logs = normal_skill.execute(self, [target], {})
             for log in logs:
                 print(log)
@@ -372,7 +377,7 @@ class Player:
                     return {"type": "no_target", "msg": "没有目标"}
             
         elif self.name == "桃井":
-            # 桃井 AI (修复版：真正的普通攻击 + 射程检测)
+            # 桃井 AI (修复版：真正的普通攻击 + 射程检测 + 语音台词增强版 v32)
             roll = random.random()
             
             # 查找射程内的敌人
@@ -386,8 +391,8 @@ class Player:
                 target = random.choice(valid_targets)
                 dmg = self.atk
                 result = target.take_damage(dmg)
-                # 【v19 更新】使用新的台词
-                print(f"   📝 {self.name} 喊道: {get_skill('momoi_normal').name}! 造成 {result['final_dmg']} 点伤害！")
+                # 【v32 更新】使用正确的台词（原代码只打印了技能名，现在打印完整台词）
+                print(f"   📝 {self.name} 喊道: '嘿嘿，这可是只有内测玩家才能看到的秘密招式！' 造成 {result['final_dmg']} 点伤害！")
                 return {
                     "type": "normal_attack",
                     "msg": f"📝 {self.name} 进行了普通的投掷攻击。造成 {result['final_dmg']} 点伤害！",
