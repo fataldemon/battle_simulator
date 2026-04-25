@@ -1,5 +1,5 @@
 # monster.py
-# 战斗模拟器 v22 - 怪物数据与行为逻辑模块 (含定位系统与射程索敌)
+# 战斗模拟器 v23 - 怪物数据与行为逻辑模块 (含定位系统与射程索敌 & 追击逻辑版)
 
 import random
 # 导入所有需要用到的技能效果类
@@ -99,9 +99,30 @@ class Monster:
             
         return skills
 
+    def _move_towards_target(self, party_members):
+        """
+        【v23 新增】追击逻辑：向最近的敌人移动一步
+        """
+        alive_players = [p for p in party_members if p.is_alive()]
+        if not alive_players:
+            return False
+
+        # 寻找距离最近的目标
+        nearest_player = min(alive_players, key=lambda p: abs(p.position - self.position))
+        
+        # 计算移动方向
+        move_dir = 1 if nearest_player.position > self.position else -1
+        
+        # 记录旧位置用于打印
+        old_pos = self.position
+        self.position += move_dir
+        
+        print(f"   👹 {self.name} 发现无法攻击，决定向 {nearest_player.name} 逼近！(从 {old_pos} 移动到 {self.position})")
+        return True
+
     def decide_action(self, party_members):
         """
-        怪物AI：决定本回合行动 (模块化版 + 射程索敌)
+        怪物AI：决定本回合行动 (模块化版 + 射程索敌 + 追击逻辑 v23)
         """
         # 检查是否处于晕眩状态
         if self.is_stunned:
@@ -147,7 +168,8 @@ class Monster:
                     target = random.choice(valid_targets)
                     logs = skill.execute(self, [target], {})
                 else:
-                    print(f"   ⚠️ {self.name} 发现周围没有射程内的敌人！无法攻击。")
+                    # 【v23 新增】追击逻辑
+                    self._move_towards_target(party_members)
                     return None
         
         elif isinstance(skill, BuffEffect):
@@ -160,7 +182,8 @@ class Monster:
             if valid_targets:
                 logs = skill.execute(self, valid_targets, {})
             else:
-                print(f"   ⚠️ {self.name} 发现周围没有射程内的敌人！无法施法。")
+                # 【v23 新增】追击逻辑
+                self._move_towards_target(party_members)
                 return None
             
         elif isinstance(skill, TrapEffect):
@@ -169,7 +192,8 @@ class Monster:
             if valid_targets:
                 logs = skill.execute(self, valid_targets, {})
             else:
-                print(f"   ⚠️ {self.name} 发现周围没有射程内的敌人！无法放置陷阱。")
+                # 【v23 新增】追击逻辑
+                self._move_towards_target(party_members)
                 return None
             
         elif isinstance(skill, SelfHealEffect):
@@ -182,7 +206,8 @@ class Monster:
             if valid_targets:
                 logs = skill.execute(self, valid_targets, {})
             else:
-                print(f"   ⚠️ {self.name} 发现周围没有射程内的敌人！无法吸血。")
+                # 【v23 新增】追击逻辑
+                self._move_towards_target(party_members)
                 return None
             
         elif isinstance(skill, CleanseEffect):
@@ -191,7 +216,8 @@ class Monster:
             if valid_targets:
                 logs = skill.execute(self, valid_targets, {})
             else:
-                print(f"   ⚠️ {self.name} 发现周围没有射程内的敌人！无法施展。")
+                # 【v23 新增】追击逻辑
+                self._move_towards_target(party_members)
                 return None
             
         else:

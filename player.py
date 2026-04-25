@@ -1,5 +1,5 @@
 # player.py
-# 战斗模拟器 v32 - 玩家数据与行为逻辑模块 (含定位系统与按位置索敌 & 目标提示 & 语音台词增强版)
+# 战斗模拟器 v37 - 玩家数据与行为逻辑模块 (全面启用 Quote 属性版 & 修复柚子重复台词版)
 
 import random
 from skill import SKILL_REGISTRY, get_skill, AttackEffect, BuffEffect, DebuffEffect, StunEffect, HealEffect
@@ -84,7 +84,7 @@ class Player:
 
     def get_action(self, enemies=None, party=None):
         """
-        获取玩家行动 (模块化版 + 射程索敌 + 按位置索敌 v31 + 语音台词增强版 v32)
+        获取玩家行动 (模块化版 + 射程索敌 + 按位置索敌 v31 + 语音台词增强版 v32 + 普攻格式修正版 v34 + 全员台词替换版 v35 + 全面启用 Quote 版 v36 & 修复柚子重复台词版 v37)
         """
         # 检查是否处于束缚状态
         if self.is_stunned:
@@ -248,7 +248,8 @@ class Player:
                 self.energy = 0 
                 
                 # 执行伤害 (修改为AOE逻辑)
-                print(f"   🌟 {self.name} 喊道: {ex_skill.name}!")
+                # 【v36 修正】使用 quote
+                print(f"   🌟 {self.name} 喊道: '{ex_skill.quote}'!")
                 print(f"   > 释放出覆盖全场的巨大电磁炮！")
                 
                 for target in alive_enemies:
@@ -261,14 +262,14 @@ class Player:
                 
                 return {
                     "type": "alice_ex",
-                    "msg": f"🌟 {self.name} 喊道: {ex_skill.name}",
+                    "msg": f"🌟 {self.name} 喊道: '{ex_skill.quote}'",
                     "damage": damage,
                     "is_crit": is_crit,
                     "target": potential_target
                 }
             
             elif skill_idx == 3:
-                # 物理攻击 (修复版：真正造成伤害)
+                # 物理攻击 (修复版：真正造成伤害 + 标准格式 v34 + 台词修正 v35 + Quote 版 v36)
                 dmg = int(random.randint(self.atk - 5, self.atk + 5))
                 
                 # 【修复】真正调用 take_damage 进行伤害结算
@@ -279,11 +280,12 @@ class Player:
                 is_crit = random.random() < 0.1
                 if is_crit:
                     actual_dmg = int(actual_dmg * 1.5)
-                    msg = f"✨ 爱丽丝物理攻击! 暴击! 造成 {actual_dmg} 点伤害!"
+                    msg = f"✨ {self.name} 对 {potential_target.name} 进行了暴击攻击! 造成 {actual_dmg} 点伤害!"
                 else:
-                    msg = f"✨ 爱丽丝物理攻击! 造成 {actual_dmg} 点伤害!"
+                    msg = f"✨ {self.name} 对 {potential_target.name} 进行了普通攻击! 造成 {actual_dmg} 点伤害!"
                 
-                print(f"   🗡️ {self.name} 喊道: {phys_skill.name}! {phys_skill.desc}")
+                # 【v36 修正】统一使用 quote
+                print(f"   🗡️ {self.name} 喊道: '{phys_skill.quote}'!")
                 print(f"   > {msg}")
                 
                 return {"type": "normal_attack", "msg": msg, "damage": actual_dmg, "target": potential_target}
@@ -292,14 +294,15 @@ class Player:
                 # 充能逻辑
                 self.energy += 1
                 # 【修复】增加打印语句
-                print(f"   ⚡ {self.name} 喊道: {charge_skill.name}! {charge_skill.desc}")
+                # 【v36 修正】使用 quote
+                print(f"   ⚡ {self.name} 喊道: '{charge_skill.quote}'!")
                 return {
                     "type": "alice_charge",
-                    "msg": f"⚡ {self.name} 喊道: {charge_skill.name} -> 能量充填层数 -> {self.energy}"
+                    "msg": f"⚡ {self.name} 喊道: '{charge_skill.quote}' -> 能量充填层数 -> {self.energy}"
                 }
 
         elif self.name == "柚子":
-            # 柚子 AI (修复版：智能选择目标 + 射程检测 + 语音台词增强版 v32)
+            # 柚子 AI (修复版：智能选择目标 + 射程检测 + 语音台词增强版 v32 + 台词修正 v35 + Quote 版 v36 & 修复重复台词版 v37)
             super_skill = get_skill("yuzu_super")
             normal_skill = get_skill("yuzu_normal")
             
@@ -318,8 +321,8 @@ class Player:
                 # 检查大招射程
                 valid_super_targets = self._find_valid_targets(enemies, super_skill.range)
                 if valid_super_targets:
-                    # 【v32 新增】播放大招语音
-                    print(f"   🎮 {self.name} 喊道: 'Hit Stop!' 时间停止！强制打断！")
+                    # 【v37 修复】不再手动打印喊话，因为 execute 内部已经处理了
+                    # print(f"   🎮 {self.name} 喊道: '{super_skill.quote}'!")
                     
                     # 执行眩晕效果
                     logs = super_skill.execute(self, [target], {})
@@ -332,8 +335,9 @@ class Player:
                     }
             
             # 普通攻击
-            # 【v32 新增】播放普攻语音
-            print(f"   🎮 {self.name} 喊道: '请别靠近我……'")
+            # 【v37 修复】不再手动打印喊话，因为 execute 内部已经处理了
+            # print(f"   🎮 {self.name} 喊道: '{normal_skill.quote}'!")
+            
             logs = normal_skill.execute(self, [target], {})
             for log in logs:
                 print(log)
@@ -344,14 +348,15 @@ class Player:
             }
                 
         elif self.name == "小绿":
-            # 小绿 AI (修复版：看全队血量 + 射程检测)
+            # 小绿 AI (修复版：看全队血量 + 射程检测 + 台词修正 v35 + Quote 版 v36)
             # 检查是否有队友受伤
             injured_players = [p for p in party if p != self and p.hp < p.max_hp]
             
             if injured_players:
                 # 有伤员，进行治疗
                 heal_skill = get_skill("midori_heal")
-                print(f"   🎨 {self.name} 喊道: {heal_skill.name}! {heal_skill.desc}")
+                # 【v36 修正】使用 quote
+                print(f"   🎨 {self.name} 喊道: '{heal_skill.quote}'!")
                 
                 # 治疗不需要目标列表，直接在 main.py 处理全队
                 return {
@@ -366,8 +371,8 @@ class Player:
                     target = random.choice(valid_targets)
                     dmg = self.atk
                     result = target.take_damage(dmg)
-                    # 【v19 更新】使用新的台词
-                    print(f"   🎨 {self.name} 喊道: {get_skill('midori_normal').name}! 造成 {result['final_dmg']} 点伤害！")
+                    # 【v36 修正】使用 quote
+                    print(f"   🎨 {self.name} 喊道: '{get_skill('midori_normal').quote}'! 对 {target.name} 造成 {result['final_dmg']} 点伤害！")
                     return {
                         "type": "normal_attack",
                         "msg": f"🎨 {self.name} 进行了普通的画笔攻击。造成 {result['final_dmg']} 点伤害！",
@@ -377,7 +382,7 @@ class Player:
                     return {"type": "no_target", "msg": "没有目标"}
             
         elif self.name == "桃井":
-            # 桃井 AI (修复版：真正的普通攻击 + 射程检测 + 语音台词增强版 v32)
+            # 桃井 AI (修复版：真正的普通攻击 + 射程检测 + 语音台词增强版 v32 + 格式修正 v34 + 台词修正 v35 + Quote 版 v36)
             roll = random.random()
             
             # 查找射程内的敌人
@@ -387,12 +392,12 @@ class Player:
                 return {"type": "no_target", "msg": "没有目标"}
 
             if roll < 0.3:
-                # 普通攻击 (修复版：真正造成伤害)
+                # 普通攻击 (修复版：真正造成伤害 + 标准格式 v34 + 台词修正 v35 + Quote 版 v36)
                 target = random.choice(valid_targets)
                 dmg = self.atk
                 result = target.take_damage(dmg)
-                # 【v32 更新】使用正确的台词（原代码只打印了技能名，现在打印完整台词）
-                print(f"   📝 {self.name} 喊道: '嘿嘿，这可是只有内测玩家才能看到的秘密招式！' 造成 {result['final_dmg']} 点伤害！")
+                # 【v36 修正】使用 quote
+                print(f"   📝 {self.name} 喊道: '{get_skill('momoi_normal').quote}'! 对 {target.name} 造成 {result['final_dmg']} 点伤害！")
                 return {
                     "type": "normal_attack",
                     "msg": f"📝 {self.name} 进行了普通的投掷攻击。造成 {result['final_dmg']} 点伤害！",
@@ -405,7 +410,8 @@ class Player:
                 skill = get_skill(skill_id)
                 
                 # 【修复】增加打印语句
-                print(f"   📝 {self.name} 喊道: {skill.name}! {skill.desc}")
+                # 【v36 修正】使用 quote
+                print(f"   📝 {self.name} 喊道: '{skill.quote}'!")
                 
                 return {
                     "type": "plot_debuff",
@@ -419,7 +425,8 @@ class Player:
                 if effect_type == "heal":
                      # 【修复】增加打印语句，引用 skill.py 中的技能
                      heal_skill = get_skill("momoi_heal")
-                     print(f"   📝 {self.name} 喊道: {heal_skill.name}! {heal_skill.desc}")
+                     # 【v36 修正】使用 quote
+                     print(f"   📝 {self.name} 喊道: '{heal_skill.quote}'!")
                      
                      return {
                         "type": "plot_buff",
@@ -431,7 +438,8 @@ class Player:
                     # Atk Up Buff
                     skill = get_skill("momoi_buff")
                     # 【修复】增加打印语句
-                    print(f"   📝 {self.name} 喊道: {skill.name}! {skill.desc}")
+                    # 【v36 修正】使用 quote
+                    print(f"   📝 {self.name} 喊道: '{skill.quote}'!")
                     
                     return {
                         "type": "plot_buff",
