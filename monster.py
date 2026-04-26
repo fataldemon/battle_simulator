@@ -1,5 +1,9 @@
 # monster.py
-# 战斗模拟器 v23 - 怪物数据与行为逻辑模块 (含定位系统与射程索敌 & 追击逻辑版)
+# 战斗模拟器 v25 - 怪物数据与行为逻辑模块 (含智能索敌与追击攻击版)
+# 核心改进：
+# 1. Debuff/Trap 技能优先选择未受影响的目标。若无目标则切换为攻击技能。
+# 2. 怪物在无法攻击时移动后，会在同一回合尝试再次攻击。
+# 3. 怪物可以一次性移动到目标位置，而不是每次只移动一格。
 
 import random
 # 导入所有需要用到的技能效果类
@@ -66,15 +70,31 @@ class Monster:
             elif status["effect"] == "defense_up":
                 self.defense = self.base_defense + status["value"]
 
-    def _find_valid_targets(self, targets, skill_range):
+    def _find_valid_targets(self, targets, skill_range, exclude_effect_type=None):
         """
-        【v22 新增】根据射程寻找有效目标
+        【v24 新增】根据射程寻找有效目标，并支持排除特定状态效果的目标
+        :param exclude_effect_type: 字符串，如 "immobilized" 或 "atk_down"。如果目标有此状态，则不被选为目标。
         """
         valid_targets = []
         for target in targets:
             if target.is_alive():
                 distance = abs(target.position - self.position)
                 if distance <= skill_range:
+                    # 如果需要排除特定状态，检查目标是否已有该状态
+                    if exclude_effect_type:
+                        has_status = False
+                        for status in target.status_effects:
+                            if status['effect'] == exclude_effect_type:
+                                has_status = True
+                                break
+                        
+                        # 特殊处理：Stun 是独立属性，不在 status_effects 列表中
+                        if exclude_effect_type == "stunned" and getattr(target, 'is_stunned', False):
+                            has_status = True
+
+                        if has_status:
+                            continue
+                    
                     valid_targets.append(target)
         return valid_targets
 
@@ -99,30 +119,39 @@ class Monster:
             
         return skills
 
-    def _move_towards_target(self, party_members):
+    def _move_towards_target(self, party_members, target_position=None):
         """
-        【v23 新增】追击逻辑：向最近的敌人移动一步
+        【v25 新增】追击逻辑：向最近的敌人移动，或者直接移动到指定位置
         """
         alive_players = [p for p in party_members if p.is_alive()]
         if not alive_players:
             return False
 
-        # 寻找距离最近的目标
-        nearest_player = min(alive_players, key=lambda p: abs(p.position - self.position))
-        
-        # 计算移动方向
-        move_dir = 1 if nearest_player.position > self.position else -1
+        # 如果没有指定目标位置，则寻找距离最近的目标
+        if target_position is None:
+            nearest_player = min(alive_players, key=lambda p: abs(p.position - self.position))
+            target_position = nearest_player.position
         
         # 记录旧位置用于打印
         old_pos = self.position
-        self.position += move_dir
         
-        print(f"   👹 {self.name} 发现无法攻击，决定向 {nearest_player.name} 逼近！(从 {old_pos} 移动到 {self.position})")
+        # 计算需要移动的步数和方向
+        distance = target_position - self.position
+        steps = distance // 1  # 向下取整，确保不超过目标位置
+        
+        # 限制最大移动步数（假设怪物最多移动5格，可以根据需要调整）
+        max_move_steps = 5
+        if abs(steps) > max_move_steps:
+            steps = max_move_steps if steps > 0 else -max_move_steps
+            
+        self.position += steps
+        
+        print(f"   👹 {self.name} 发现无法攻击，决定向目标逼近！(从 {old_pos} 移动到 {self.position})")
         return True
 
     def decide_action(self, party_members):
         """
-        怪物AI：决定本回合行动 (模块化版 + 射程索敌 + 追击逻辑 v23)
+        怪物AI：决定本回合行动 (模块化版 + 智能索敌 + 追击攻击 v25)
         """
         # 检查是否处于晕眩状态
         if self.is_stunned:
@@ -153,76 +182,107 @@ class Monster:
 
         # 执行技能效果
         logs = []
-        
+        targets = []
+        needs_external_target = False
+
+        # 根据技能类型确定索敌策略
         if isinstance(skill, AttackEffect):
-            # 攻击技能
-            is_aoe = skill.name in ["地震术", "龙息吐息"] # 简单判断，实际可以在 skill 定义里加 flag
+            needs_external_target = True
+            is_aoe = skill.name in ["地震术", "龙息吐息"] 
             
             if is_aoe:
                 targets = [p for p in party_members if p.is_alive()]
-                logs = skill.execute(self, targets, {})
             else:
-                # 【v22 修改】使用射程索敌
-                valid_targets = self._find_valid_targets(party_members, skill.range)
-                if valid_targets:
-                    target = random.choice(valid_targets)
-                    logs = skill.execute(self, [target], {})
-                else:
-                    # 【v23 新增】追击逻辑
-                    self._move_towards_target(party_members)
-                    return None
-        
+                # 普通攻击直接索敌
+                targets = self._find_valid_targets(party_members, skill.range)
+
         elif isinstance(skill, BuffEffect):
-            # 增益技能 (对自己)
-            logs = skill.execute(self, [self], {})
+            # 增益技能 (对自己)，不需要外部目标
+            targets = [self]
             
         elif isinstance(skill, DebuffEffect):
-            # 减益技能 (对敌人/玩家)
-            valid_targets = self._find_valid_targets(party_members, skill.range)
-            if valid_targets:
-                logs = skill.execute(self, valid_targets, {})
-            else:
-                # 【v23 新增】追击逻辑
-                self._move_towards_target(party_members)
-                return None
+            needs_external_target = True
+            # 优先选择没有该 Debuff 的目标
+            exclude_type = f"{skill.stat}_down"
+            targets = self._find_valid_targets(party_members, skill.range, exclude_effect_type=exclude_type)
             
         elif isinstance(skill, TrapEffect):
-            # 陷阱技能
-            valid_targets = self._find_valid_targets(party_members, skill.range)
-            if valid_targets:
-                logs = skill.execute(self, valid_targets, {})
-            else:
-                # 【v23 新增】追击逻辑
-                self._move_towards_target(party_members)
-                return None
+            needs_external_target = True
+            # 优先选择没有被束缚的目标
+            targets = self._find_valid_targets(party_members, skill.range, exclude_effect_type="immobilized")
             
-        elif isinstance(skill, SelfHealEffect):
-            # 自我恢复
-            logs = skill.execute(self, [], {})
+        elif isinstance(skill, StunEffect):
+            needs_external_target = True
+            # 优先选择没有眩晕的目标
+            targets = self._find_valid_targets(party_members, skill.range, exclude_effect_type="stunned")
+
+        elif isinstance(skill, CleanseEffect):
+            needs_external_target = True
+            targets = self._find_valid_targets(party_members, skill.range)
             
         elif isinstance(skill, LifestealEffect):
-            # 吸血
-            valid_targets = self._find_valid_targets(party_members, skill.range)
-            if valid_targets:
-                logs = skill.execute(self, valid_targets, {})
-            else:
-                # 【v23 新增】追击逻辑
-                self._move_towards_target(party_members)
-                return None
+            needs_external_target = True
+            targets = self._find_valid_targets(party_members, skill.range)
             
-        elif isinstance(skill, CleanseEffect):
-            # 清除增益
-            valid_targets = self._find_valid_targets(party_members, skill.range)
-            if valid_targets:
-                logs = skill.execute(self, valid_targets, {})
-            else:
-                # 【v23 新增】追击逻辑
-                self._move_towards_target(party_members)
-                return None
+        elif isinstance(skill, SelfHealEffect):
+            # 自我恢复，不需要外部目标
+            pass
             
         else:
             # 其他未知技能
             logs.append(f"   {self.name} 使用了特殊技能！")
+
+        # 【v25 核心逻辑】如果找不到目标，尝试移动后再试一次
+        if needs_external_target and not targets:
+            # 如果是 Debuff/Trap/Stun 等控制技能，且没有符合条件的目标，则切换为攻击技能
+            if isinstance(skill, (DebuffEffect, TrapEffect, StunEffect)):
+                print(f"   ⚠️ {self.name} 发现没有合适的目标施加【{skill.name}】，切换为普通攻击！")
+                skill = get_skill("basic_attack")
+                targets = self._find_valid_targets(party_members, skill.range)
+            
+            # 如果还是没有目标，则移动后再试一次
+            if not targets:
+                self._move_towards_target(party_members)
+                
+                # 移动后重新索敌
+                if isinstance(skill, AttackEffect) and skill.name not in ["地震术", "龙息吐息"]:
+                    targets = self._find_valid_targets(party_members, skill.range)
+                elif isinstance(skill, DebuffEffect):
+                    targets = self._find_valid_targets(party_members, skill.range, exclude_effect_type=f"{skill.stat}_down")
+                elif isinstance(skill, TrapEffect):
+                    targets = self._find_valid_targets(party_members, skill.range, exclude_effect_type="immobilized")
+                elif isinstance(skill, StunEffect):
+                    targets = self._find_valid_targets(party_members, skill.range, exclude_effect_type="stunned")
+                elif isinstance(skill, CleanseEffect):
+                    targets = self._find_valid_targets(party_members, skill.range)
+                elif isinstance(skill, LifestealEffect):
+                    targets = self._find_valid_targets(party_members, skill.range)
+
+        # 执行技能
+        if needs_external_target:
+            if targets:
+                # 对于单体技能，从有效目标中随机选一个；对于群体技能（如AOE或某些Debuff），可能作用于多个
+                # 目前大部分非AOE技能在 execute 里都假设 targets 列表里的都要处理，或者取第一个
+                
+                if isinstance(skill, AttackEffect) and not skill.is_aoe:
+                    # 单体攻击只打一个
+                    target = random.choice(targets)
+                    logs = skill.execute(self, [target], {})
+                elif isinstance(skill, LifestealEffect):
+                    # 吸血只吸一个
+                    target = random.choice(targets)
+                    logs = skill.execute(self, [target], {})
+                else:
+                    # AOE 或其他群体效果
+                    logs = skill.execute(self, targets, {})
+            else:
+                logs.append(f"   ❌ {self.name} 即使移动后也无法攻击到目标！")
+        else:
+            # 自我技能
+            if isinstance(skill, BuffEffect):
+                logs = skill.execute(self, [self], {})
+            elif isinstance(skill, SelfHealEffect):
+                logs = skill.execute(self, [], {})
 
         # 打印日志
         for log in logs:
