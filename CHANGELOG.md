@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v39.0] - 2026-04-26
+### Fixed
+- **Debuff 机制修复**：在 `player.py` 和 `monster.py` 的 `update_status_effects` 函数中补全了 `atk_down` 和 `defense_down` 的处理逻辑，确保状态结束后属性能正确恢复。
+- **台词格式统一**：将所有角色的技能打印格式统一为双引号 `" "`，并移除了多余的感叹号，保持输出风格一致。
+- **技能菜单优化**：调整了爱丽丝的技能选择顺序，现在为 [普攻, 充能, EX]，更符合直觉。
+
 ## [v37.0] - 2026-04-25
 ### Added
 - **全语音台词系统 (Quote System)**：重构了对话输出逻辑，所有技能类均新增 `quote` 属性，实现了动态台词播放。

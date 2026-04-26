@@ -1,5 +1,5 @@
 # main.py
-# 战斗模拟器 v30 - 主程序 (修复怪物移动时机 & 增加战后清扫重排)
+# 战斗模拟器 v39 - 主程序 (修复怪物移动时机 & 增加战后清扫重排 & 文本优化)
 
 import argparse
 import random
@@ -10,7 +10,7 @@ from utils import squeeze_move
 def init_game_random():
     """初始化游戏 - 随机副本模式"""
     print("=" * 50)
-    print("📜 团队副本模拟器 v30 (修正移动阶段版)")
+    print("📜 团队副本模拟器 v39 (修正移动阶段版)")
     print("=" * 50)
     
     low_level_pool = [m for m in MONSTERS_DATA if m['level'] <= 5]
@@ -66,7 +66,7 @@ def init_game_custom(args):
         return init_game_random()
 
     print("=" * 50)
-    print("📜 团队副本模拟器 v30 (修正移动阶段版)")
+    print("📜 团队副本模拟器 v39 (修正移动阶段版)")
     print("=" * 50)
     
     enemy_team = []
@@ -96,7 +96,7 @@ def init_game_custom(args):
                 print(f"   - {enemy.name} (LV.{enemy.level}) 出现！")
             else:
                 print(f"   ❌ 未找到怪物: {target}")
-            
+                
     elif args.level:
         target_level = int(args.level)
         current_level = 0
@@ -180,12 +180,12 @@ def process_movement_phase(battle_field, enemy_team, party):
             target_pos = int(raw_input)
             
             if target_pos == alice.position:
-                print(f"   >> 爱丽丝选择了原地待命。")
+                print(f"   >> 爱丽丝选择了坚守。")
             else:
                 squeeze_move(battle_field, alice, target_pos)
         except ValueError:
-            print("   输入无效，爱丽丝原地不动。")
-        
+            print("   输入无效，爱丽丝坚守。")
+            
         # 【v25 新增】移动后立即刷新站位概览，方便确认
         print("\n[战场站位概览]")
         for i, unit in enumerate(battle_field):
@@ -293,7 +293,7 @@ def process_monster_action(battle_field, enemy_team, party):
         boss.decide_action(party)
 
 def main():
-    parser = argparse.ArgumentParser(description="战斗模拟器 v30")
+    parser = argparse.ArgumentParser(description="战斗模拟器 v39")
     parser.add_argument('--level', type=int, help='指定怪物总等级')
     parser.add_argument('--monster', type=str, help='指定怪物列表')
     args = parser.parse_args()

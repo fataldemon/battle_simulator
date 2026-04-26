@@ -1,5 +1,5 @@
 # player.py
-# 战斗模拟器 v37 - 玩家数据与行为逻辑模块 (全面启用 Quote 属性版 & 修复柚子重复台词版)
+# 战斗模拟器 v39 - 玩家数据与行为逻辑模块 (技能顺序调整 v2 & 描述增强版 & 格式统一修复版)
 
 import random
 from skill import SKILL_REGISTRY, get_skill, AttackEffect, BuffEffect, DebuffEffect, StunEffect, HealEffect
@@ -56,6 +56,12 @@ class Player:
                 self.atk = int(self.atk * (1 + status["value"]))
             elif status["effect"] == "defense_up":
                 self.defense = self.defense + status["value"]
+            elif status["effect"] == "atk_down":
+                # 【修复】增加 Debuff 处理逻辑
+                self.atk = int(self.atk * (1 - status["value"]))
+            elif status["effect"] == "defense_down":
+                # 【修复】增加 Debuff 处理逻辑
+                self.defense = int(self.defense * (1 - status["value"]))
 
     def print_status(self):
         """打印状态信息：名字、血条、数值、状态图标"""
@@ -84,7 +90,7 @@ class Player:
 
     def get_action(self, enemies=None, party=None):
         """
-        获取玩家行动 (模块化版 + 射程索敌 + 按位置索敌 v31 + 语音台词增强版 v32 + 普攻格式修正版 v34 + 全员台词替换版 v35 + 全面启用 Quote 版 v36 & 修复柚子重复台词版 v37)
+        获取玩家行动 (模块化版 + 射程索敌 + 按位置索敌 v31 + 语音台词增强版 v32 + 普攻格式修正版 v34 + 全员台词替换版 v35 + 全面启用 Quote 版 v36 & 修复柚子重复台词版 v37 & 技能顺序调整 v38 & 技能顺序调整 v2 v39 & 格式统一修复版)
         """
         # 检查是否处于束缚状态
         if self.is_stunned:
@@ -132,9 +138,20 @@ class Player:
             phys_target_str = ", ".join([f"{t.name}[{t.position}]" for t in phys_targets]) if phys_targets else "无"
 
             print(f"\n   >> 爱丽丝，请做出你的行动！(能量: {energy_bar})")
-            print(f"   [1] {charge_skill.name}")
-            print(f"       说明: {charge_skill.desc}")
             
+            # 【v39 修改】技能顺序调整：光之剑(普攻) -> 充能 -> 光哟(EX)
+            # [1] 普通攻击
+            print(f"   [1] {phys_skill.name} [普通攻击]")
+            print(f"       说明: {phys_skill.desc}")
+            print(f"       射程: {phys_skill.range}")
+            print(f"       可攻击目标: {phys_target_str}")
+            
+            # [2] 充能
+            print(f"   [2] {charge_skill.name} [充能]")
+            print(f"       说明: {charge_skill.desc}")
+            print(f"       射程: N/A")
+
+            # [3] EX技能
             # 计算大招倍率
             base_multiplier = ex_skill.multiplier
             energy_bonus = 0.5 
@@ -145,16 +162,13 @@ class Player:
             if self.energy < 2:
                 ex_status += " (❌ 能量不足)"
             
-            print(f"   [2] {ex_skill.name}{ex_status}")
+            print(f"   [3] {ex_skill.name} [EX技能]{ex_status}")
             print(f"       说明: {ex_skill.desc}")
+            print(f"       射程: 全图")
             print(f"       可攻击目标: {ex_target_str}")
             
-            print(f"   [3] {phys_skill.name}")
-            print(f"       说明: {phys_skill.desc}")
-            print(f"       可攻击目标: {phys_target_str}")
-            
             print(f"\n   >>> 请输入指令：")
-            print(f"   格式：敌人位置编号-技能序号 (例如：4-3)")
+            print(f"   格式：敌人位置编号-技能序号 (例如：4-1)")
             
             while True:
                 try:
@@ -169,7 +183,7 @@ class Player:
                             target_pos = int(parts[0])
                             skill_idx = int(parts[1])
                         except ValueError:
-                            print("   ❌ 输入格式错误，请使用 '敌人位置-技能' 格式 (例如 4-3)")
+                            print("   ❌ 输入格式错误，请使用 '敌人位置-技能' 格式 (例如 4-1)")
                             continue
                     else:
                         try:
@@ -199,7 +213,7 @@ class Player:
                             potential_target = None
                     
                     # 检查射程
-                    if skill_idx == 3: # 物理攻击
+                    if skill_idx == 1: # 物理攻击
                         skill_range = phys_skill.range
                         if potential_target:
                             dist = abs(potential_target.position - self.position)
@@ -208,14 +222,14 @@ class Player:
                                 print(f"   请选择射程内的目标，或者取消攻击。")
                                 continue
                         
-                    elif skill_idx == 2: # EX 技能 (全屏)
+                    elif skill_idx == 3: # EX技能 (全屏) -> 注意索引变为3
                         pass # 不需要检查，因为是 AOE
 
                     if skill_idx not in [1, 2, 3]:
-                        print(f"   技能序号无效 (1-3)，默认执行充能")
+                        print(f"   技能序号无效 (1-3)，默认执行普通攻击")
                         skill_idx = 1
                     
-                    if skill_idx == 2 and self.energy < 2:
+                    if skill_idx == 3 and self.energy < 2: # 注意索引变为3
                         print(f"   ❌ 能量不足！无法发动必杀技！(当前能量: {self.energy})")
                         print(f"   请重新输入指令。")
                         continue 
@@ -223,13 +237,46 @@ class Player:
                     break 
 
                 except ValueError:
-                    print("   输入格式错误，默认目标1，技能1 (充能)")
+                    print("   输入格式错误，默认目标1，技能1 (普通攻击)")
                     potential_target = alive_enemies[0] if alive_enemies else None
                     skill_idx = 1
                     break
 
             # 执行技能
-            if skill_idx == 2:
+            if skill_idx == 1:
+                # 物理攻击 (修复版：真正造成伤害 + 标准格式 v34 + 台词修正 v35 + Quote 版 v36 & v38/v39感叹号修复)
+                dmg = int(random.randint(self.atk - 5, self.atk + 5))
+                
+                # 【修复】真正调用 take_damage 进行伤害结算
+                result = potential_target.take_damage(dmg)
+                actual_dmg = result['final_dmg']
+                
+                # 暴击判定
+                is_crit = random.random() < 0.1
+                if is_crit:
+                    actual_dmg = int(actual_dmg * 1.5)
+                    msg = f"✨ {self.name} 对 {potential_target.name} 进行了暴击攻击! 造成 {actual_dmg} 点伤害!"
+                else:
+                    msg = f"✨ {self.name} 对 {potential_target.name} 进行了普通攻击! 造成 {actual_dmg} 点伤害!"
+                
+                # 【v39 修正】统一使用双引号，去掉外部感叹号
+                print(f"   🗡️ {self.name} 喊道: \"{phys_skill.quote}\"")
+                print(f"   > {msg}")
+                
+                return {"type": "normal_attack", "msg": msg, "damage": actual_dmg, "target": potential_target}
+            
+            elif skill_idx == 2: # 注意索引变为2
+                # 充能逻辑
+                self.energy += 1
+                # 【修复】增加打印语句
+                # 【v39 修正】使用双引号，去掉外部感叹号
+                print(f"   ⚡ {self.name} 喊道: \"{charge_skill.quote}\"")
+                return {
+                    "type": "alice_charge",
+                    "msg": f"⚡ {self.name} 喊道: \"{charge_skill.quote}\" -> 能量充填层数 -> {self.energy}"
+                }
+            
+            else: # skill_idx == 3
                 # 释放大招 (特殊逻辑：消耗能量并增加伤害)
                 base_multiplier = ex_skill.multiplier
                 energy_bonus = 0.5 
@@ -248,8 +295,8 @@ class Player:
                 self.energy = 0 
                 
                 # 执行伤害 (修改为AOE逻辑)
-                # 【v36 修正】使用 quote
-                print(f"   🌟 {self.name} 喊道: '{ex_skill.quote}'!")
+                # 【v39 修正】使用双引号，去掉外部感叹号
+                print(f"   🌟 {self.name} 喊道: \"{ex_skill.quote}\"")
                 print(f"   > 释放出覆盖全场的巨大电磁炮！")
                 
                 for target in alive_enemies:
@@ -258,51 +305,18 @@ class Player:
                     if not target.is_alive():
                         # 获取倒地台词，如果没有则使用默认文本
                         death_msg = getattr(target, 'death_msg', f"{target.name} 倒下了...")
-                        print(f"   💀 {target.name} 倒下了... '{death_msg}'")
+                        print(f"   💀 {target.name} 倒下了... \"{death_msg}\"")
                 
                 return {
                     "type": "alice_ex",
-                    "msg": f"🌟 {self.name} 喊道: '{ex_skill.quote}'",
+                    "msg": f"🌟 {self.name} 喊道: \"{ex_skill.quote}\"",
                     "damage": damage,
                     "is_crit": is_crit,
                     "target": potential_target
                 }
-            
-            elif skill_idx == 3:
-                # 物理攻击 (修复版：真正造成伤害 + 标准格式 v34 + 台词修正 v35 + Quote 版 v36)
-                dmg = int(random.randint(self.atk - 5, self.atk + 5))
-                
-                # 【修复】真正调用 take_damage 进行伤害结算
-                result = potential_target.take_damage(dmg)
-                actual_dmg = result['final_dmg']
-                
-                # 暴击判定
-                is_crit = random.random() < 0.1
-                if is_crit:
-                    actual_dmg = int(actual_dmg * 1.5)
-                    msg = f"✨ {self.name} 对 {potential_target.name} 进行了暴击攻击! 造成 {actual_dmg} 点伤害!"
-                else:
-                    msg = f"✨ {self.name} 对 {potential_target.name} 进行了普通攻击! 造成 {actual_dmg} 点伤害!"
-                
-                # 【v36 修正】统一使用 quote
-                print(f"   🗡️ {self.name} 喊道: '{phys_skill.quote}'!")
-                print(f"   > {msg}")
-                
-                return {"type": "normal_attack", "msg": msg, "damage": actual_dmg, "target": potential_target}
-            
-            else:
-                # 充能逻辑
-                self.energy += 1
-                # 【修复】增加打印语句
-                # 【v36 修正】使用 quote
-                print(f"   ⚡ {self.name} 喊道: '{charge_skill.quote}'!")
-                return {
-                    "type": "alice_charge",
-                    "msg": f"⚡ {self.name} 喊道: '{charge_skill.quote}' -> 能量充填层数 -> {self.energy}"
-                }
 
         elif self.name == "柚子":
-            # 柚子 AI (修复版：智能选择目标 + 射程检测 + 语音台词增强版 v32 + 台词修正 v35 + Quote 版 v36 & 修复重复台词版 v37)
+            # 柚子 AI (修复版：智能选择目标 + 射程检测 + 语音台词增强版 v32 + 台词修正 v35 + Quote 版 v36 & 修复重复台词版 v37 & 格式统一修复版)
             super_skill = get_skill("yuzu_super")
             normal_skill = get_skill("yuzu_normal")
             
@@ -330,7 +344,8 @@ class Player:
                         print(log)
                     return {
                         "type": "super_attack",
-                        "msg": f"🎮 {self.name} 喊道: '{super_skill.name}' 造成了眩晕！",
+                        # 【格式统一】改为双引号，去掉感叹号
+                        "msg": f"🎮 {self.name} 喊道: \"{super_skill.name}\" 造成了眩晕！",
                         "effect": "stun"
                     }
             
@@ -348,15 +363,15 @@ class Player:
             }
                 
         elif self.name == "小绿":
-            # 小绿 AI (修复版：看全队血量 + 射程检测 + 台词修正 v35 + Quote 版 v36)
+            # 小绿 AI (修复版：看全队血量 + 射程检测 + 台词修正 v35 + Quote 版 v36 & 格式统一修复版)
             # 检查是否有队友受伤
             injured_players = [p for p in party if p != self and p.hp < p.max_hp]
             
             if injured_players:
                 # 有伤员，进行治疗
                 heal_skill = get_skill("midori_heal")
-                # 【v36 修正】使用 quote
-                print(f"   🎨 {self.name} 喊道: '{heal_skill.quote}'!")
+                # 【格式统一】改为双引号，去掉感叹号
+                print(f"   🎨 {self.name} 喊道: \"{heal_skill.quote}\"")
                 
                 # 治疗不需要目标列表，直接在 main.py 处理全队
                 return {
@@ -371,8 +386,8 @@ class Player:
                     target = random.choice(valid_targets)
                     dmg = self.atk
                     result = target.take_damage(dmg)
-                    # 【v36 修正】使用 quote
-                    print(f"   🎨 {self.name} 喊道: '{get_skill('midori_normal').quote}'! 对 {target.name} 造成 {result['final_dmg']} 点伤害！")
+                    # 【格式统一】改为双引号，去掉感叹号
+                    print(f"   🎨 {self.name} 喊道: \"{get_skill('midori_normal').quote}\" 对 {target.name} 造成 {result['final_dmg']} 点伤害！")
                     return {
                         "type": "normal_attack",
                         "msg": f"🎨 {self.name} 进行了普通的画笔攻击。造成 {result['final_dmg']} 点伤害！",
@@ -382,7 +397,7 @@ class Player:
                     return {"type": "no_target", "msg": "没有目标"}
             
         elif self.name == "桃井":
-            # 桃井 AI (修复版：真正的普通攻击 + 射程检测 + 语音台词增强版 v32 + 格式修正 v34 + 台词修正 v35 + Quote 版 v36)
+            # 桃井 AI (修复版：真正的普通攻击 + 射程检测 + 语音台词增强版 v32 + 格式修正 v34 + 台词修正 v35 + Quote 版 v36 & 格式统一修复版)
             roll = random.random()
             
             # 查找射程内的敌人
@@ -396,8 +411,8 @@ class Player:
                 target = random.choice(valid_targets)
                 dmg = self.atk
                 result = target.take_damage(dmg)
-                # 【v36 修正】使用 quote
-                print(f"   📝 {self.name} 喊道: '{get_skill('momoi_normal').quote}'! 对 {target.name} 造成 {result['final_dmg']} 点伤害！")
+                # 【格式统一】改为双引号，去掉感叹号
+                print(f"   📝 {self.name} 喊道: \"{get_skill('momoi_normal').quote}\" 对 {target.name} 造成 {result['final_dmg']} 点伤害！")
                 return {
                     "type": "normal_attack",
                     "msg": f"📝 {self.name} 进行了普通的投掷攻击。造成 {result['final_dmg']} 点伤害！",
@@ -410,12 +425,13 @@ class Player:
                 skill = get_skill(skill_id)
                 
                 # 【修复】增加打印语句
-                # 【v36 修正】使用 quote
-                print(f"   📝 {self.name} 喊道: '{skill.quote}'!")
+                # 【格式统一】改为双引号，去掉感叹号
+                print(f"   📝 {self.name} 喊道: \"{skill.quote}\"")
                 
                 return {
                     "type": "plot_debuff",
-                    "msg": f"📝 {self.name} 大喊：'{skill.name}'",
+                    # 【格式统一】改为双引号，去掉感叹号
+                    "msg": f"📝 {self.name} 大喊：\"{skill.name}\"",
                     "effect": effect_type
                 }
             else:
@@ -425,12 +441,13 @@ class Player:
                 if effect_type == "heal":
                      # 【修复】增加打印语句，引用 skill.py 中的技能
                      heal_skill = get_skill("momoi_heal")
-                     # 【v36 修正】使用 quote
-                     print(f"   📝 {self.name} 喊道: '{heal_skill.quote}'!")
+                     # 【格式统一】改为双引号，去掉感叹号
+                     print(f"   📝 {self.name} 喊道: \"{heal_skill.quote}\"")
                      
                      return {
                         "type": "plot_buff",
-                        "msg": f"📝 {self.name} 大喊：'{heal_skill.name}'",
+                        # 【格式统一】改为双引号，去掉感叹号
+                        "msg": f"📝 {self.name} 大喊：\"{heal_skill.name}\"",
                         "effect": "heal",
                         "amount": amount
                     }
@@ -438,12 +455,13 @@ class Player:
                     # Atk Up Buff
                     skill = get_skill("momoi_buff")
                     # 【修复】增加打印语句
-                    # 【v36 修正】使用 quote
-                    print(f"   📝 {self.name} 喊道: '{skill.quote}'!")
+                    # 【格式统一】改为双引号，去掉感叹号
+                    print(f"   📝 {self.name} 喊道: \"{skill.quote}\"")
                     
                     return {
                         "type": "plot_buff",
-                        "msg": f"📝 {self.name} 大喊：'{skill.name}'",
+                        # 【格式统一】改为双引号，去掉感叹号
+                        "msg": f"📝 {self.name} 大喊：\"{skill.name}\"",
                         "effect": "atk_up",
                         "amount": int(self.atk * 0.2)
                     }
