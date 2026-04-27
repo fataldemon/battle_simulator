@@ -1,5 +1,6 @@
 # main.py
-# 战斗模拟器 v39 - 主程序 (修复怪物移动时机 & 增加战后清扫重排 & 文本优化)
+# 战斗模拟器 v40 - 主程序 (束缚机制重构版)
+# 核心改进：在移动阶段增加对 is_immobilized 的判断，被束缚者无法移动
 
 import argparse
 import random
@@ -10,7 +11,7 @@ from utils import squeeze_move
 def init_game_random():
     """初始化游戏 - 随机副本模式"""
     print("=" * 50)
-    print("📜 团队副本模拟器 v39 (修正移动阶段版)")
+    print("📜 团队副本模拟器 v40 (束缚机制重构版)")
     print("=" * 50)
     
     low_level_pool = [m for m in MONSTERS_DATA if m['level'] <= 5]
@@ -66,7 +67,7 @@ def init_game_custom(args):
         return init_game_random()
 
     print("=" * 50)
-    print("📜 团队副本模拟器 v39 (修正移动阶段版)")
+    print("📜 团队副本模拟器 v40 (束缚机制重构版)")
     print("=" * 50)
     
     enemy_team = []
@@ -158,8 +159,8 @@ def setup_battle_field(enemy_team, party):
 
 def process_movement_phase(battle_field, enemy_team, party):
     """
-    【v29 修复】移动阶段
-    移除了玩家在玩家回合时的怪物移动逻辑，防止坐标混乱。
+    【v40 重构】移动阶段
+    新增：检查 is_immobilized 状态，被束缚者无法移动
     """
     print("\n--- 🏃 移动阶段 ---")
     
@@ -171,29 +172,33 @@ def process_movement_phase(battle_field, enemy_team, party):
             break
             
     if alice and alice.is_alive():
-        # 【v25 优化】简化输入：直接输入数字，相同即不动
-        # 【v26 修复】确保提示信息清晰可见
-        print(f"   >>> 爱丽丝当前位于第 {alice.position} 号位 <<<")
-        print(f"   >>> 请输入目标位置索引 (0-{len(battle_field)-1})，相同位置表示不动 <<<", flush=True)
-        try:
-            raw_input = input()
-            target_pos = int(raw_input)
-            
-            if target_pos == alice.position:
-                print(f"   >> 爱丽丝选择了坚守。")
-            else:
-                squeeze_move(battle_field, alice, target_pos)
-        except ValueError:
-            print("   输入无效，爱丽丝坚守。")
-            
-        # 【v25 新增】移动后立即刷新站位概览，方便确认
-        print("\n[战场站位概览]")
-        for i, unit in enumerate(battle_field):
-            if unit.is_alive():
-                # 【v26 修复】现在 party 参数可用了
-                prefix = "🟢" if unit in party else "🔴"
-                print(f"   {prefix} [{i}] {unit.name}")
+        # 【v40 新增】检查是否被束缚
+        if alice.is_immobilized:
+            print(f"   🕸️ 爱丽丝被蛛网束缚住了！本回合无法移动！")
+        else:
+            # 【v25 优化】简化输入：直接输入数字，相同即不动
+            # 【v26 修复】确保提示信息清晰可见
+            print(f"   >>> 爱丽丝当前位于第 {alice.position} 号位 <<<")
+            print(f"   >>> 请输入目标位置索引 (0-{len(battle_field)-1})，相同位置表示不动 <<<", flush=True)
+            try:
+                raw_input = input()
+                target_pos = int(raw_input)
                 
+                if target_pos == alice.position:
+                    print(f"   >> 爱丽丝选择了坚守。")
+                else:
+                    squeeze_move(battle_field, alice, target_pos)
+            except ValueError:
+                print("   输入无效，爱丽丝坚守。")
+            
+            # 【v25 新增】移动后立即刷新站位概览，方便确认
+            print("\n[战场站位概览]")
+            for i, unit in enumerate(battle_field):
+                if unit.is_alive():
+                    # 【v26 修复】现在 party 参数可用了
+                    prefix = "🟢" if unit in party else "🔴"
+                    print(f"   {prefix} [{i}] {unit.name}")
+                    
     # 2. 队友 (桃井、小绿、柚子) 不移动 (保持阵型)
             
     # 3. 【v29 修复】移除了这里的怪物移动逻辑！
@@ -293,7 +298,7 @@ def process_monster_action(battle_field, enemy_team, party):
         boss.decide_action(party)
 
 def main():
-    parser = argparse.ArgumentParser(description="战斗模拟器 v39")
+    parser = argparse.ArgumentParser(description="战斗模拟器 v40")
     parser.add_argument('--level', type=int, help='指定怪物总等级')
     parser.add_argument('--monster', type=str, help='指定怪物列表')
     args = parser.parse_args()

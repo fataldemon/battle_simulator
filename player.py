@@ -1,8 +1,13 @@
 # player.py
-# 战斗模拟器 v39 - 玩家数据与行为逻辑模块 (技能顺序调整 v2 & 描述增强版 & 格式统一修复版)
+# 战斗模拟器 v42 - 玩家数据与行为逻辑模块 (高度模块化重构版)
+# 核心改进：
+# 1. 移除了所有手动的伤害计算 (take_damage) 和死亡检测 (_check_death)。
+# 2. 所有攻击、Buff、Debuff、治疗动作均转为调用 skill.execute()，通过 params 传递动态参数。
+# 3. 彻底贯彻单一事实来源，确保击杀提示不会遗漏。
+# 4. 【v42-hotfix】增加了 "skill_module_handled" 类型标识，避免 main.py 进行二次重复结算。
 
 import random
-from skill import SKILL_REGISTRY, get_skill, AttackEffect, BuffEffect, DebuffEffect, StunEffect, HealEffect
+from skill import SKILL_REGISTRY, get_skill, AttackEffect, BuffEffect, DebuffEffect, StunEffect, HealEffect, ImmobilizeEffect
 
 class Player:
     def __init__(self, data):
@@ -13,13 +18,18 @@ class Player:
         self.atk = data["atk"]
         self.defense = data["defense"]
         self.skill_name = data["skill"]
+        
+        # 新增：基础暴击率，供技能模块调用
+        self.crit_rate = 0.1 
+
         self.energy = 0 # 爱丽丝专用能量
         self.has_used_super = False # 柚子专用：记录大招是否已使用
-        self.is_stunned = False # 新增：被束缚状态
-        self.death_msg = data.get("death_msg", "") # 新增：倒地台词
+        self.is_stunned = False # 眩晕状态（无法行动）
+        self.is_immobilized = False # 束缚状态（无法移动，但可以行动）
+        self.death_msg = data.get("death_msg", "") 
         
         # 【v22 新增】定位系统
-        self.position = 0  # 初始位置默认为 0，将在游戏初始化时重新分配
+        self.position = 0  
 
         # v12 新增：状态列表 (Buff/Debuff)
         self.status_effects = []
@@ -50,6 +60,11 @@ class Player:
             status["duration"] -= 1
             
         self.status_effects = [s for s in self.status_effects if s["duration"] > 0]
+        
+        # 检查是否还有 immobilized 状态，如果没有则解除束缚
+        has_immobilized = any(s["effect"] == "immobilized" for s in self.status_effects)
+        if not has_immobilized:
+            self.is_immobilized = False
         
         for status in self.status_effects:
             if status["effect"] == "atk_up":
@@ -90,13 +105,18 @@ class Player:
 
     def get_action(self, enemies=None, party=None):
         """
-        获取玩家行动 (模块化版 + 射程索敌 + 按位置索敌 v31 + 语音台词增强版 v32 + 普攻格式修正版 v34 + 全员台词替换版 v35 + 全面启用 Quote 版 v36 & 修复柚子重复台词版 v37 & 技能顺序调整 v38 & 技能顺序调整 v2 v39 & 格式统一修复版)
+        获取玩家行动 (高度模块化重构版 v42)
+        所有攻击伤害计算已迁移至 skill.py 执行。
         """
-        # 检查是否处于束缚状态
+        # 检查是否处于眩晕状态（无法行动）
         if self.is_stunned:
             print(f"   🕸️ {self.name} 被蛛网束缚住了！无法行动！")
             self.is_stunned = False 
             return {"type": "stunned", "msg": f"{self.name} 无法行动"}
+
+        # 检查是否处于束缚状态（无法移动，但可以行动）
+        if self.is_immobilized:
+            print(f"   🕸️ {self.name} 被束缚住了！本回合无法移动，但可以正常行动！")
 
         if self.name == "爱丽丝":
             # === 交互逻辑：爱丽丝 ===
@@ -106,40 +126,29 @@ class Player:
                 print("   ❌ 场上没有可攻击的目标！")
                 return {"type": "no_target", "msg": "没有目标"}
 
-            # 获取技能描述
+            # 获取技能对象
             charge_skill = get_skill("alice_charge")
             ex_skill = get_skill("alice_ex")
             phys_skill = get_skill("alice_physical")
 
-            # --- 修改：电池样式能量槽 (复古方块风格 - 无上限) ---
-            # 动态生成能量槽
-            # 限制最大显示长度，防止 UI 溢出屏幕，比如最多显示 10 个格子
+            # --- 电池样式能量槽 ---
             max_display = 10
-            
             if self.energy > max_display:
                 energy_bar = "[" + " ".join(["█"] * max_display) + "...]"
             else:
-                # 确定显示的格子总数：至少 2 个，最多 max_display
                 total_cells = max(2, self.energy)
                 cells = ["█" if i < self.energy else "░" for i in range(total_cells)]
                 energy_bar = "[" + " ".join(cells) + "]"
-            # --------------------------------
 
-            # 【v31 新增】计算可攻击的目标列表
-            # 充能不需要目标
-            # EX 技能是全图 AOE，可以攻击所有活着的敌人
-            # 物理攻击需要检测射程
-            
-            ex_targets = alive_enemies # EX 技能全图
+            ex_targets = alive_enemies 
             phys_targets = self._find_valid_targets(enemies, phys_skill.range)
             
-            # 格式化目标列表字符串
             ex_target_str = ", ".join([f"{e.name}[{e.position}]" for e in ex_targets]) if ex_targets else "无"
             phys_target_str = ", ".join([f"{t.name}[{t.position}]" for t in phys_targets]) if phys_targets else "无"
 
-            print(f"\n   >> 爱丽丝，请做出你的行动！(能量: {energy_bar})")
+            immobilized_note = " (🕸️ 束缚中：无法移动)" if self.is_immobilized else ""
+            print(f"\n   >> 爱丽丝，请做出你的行动！(能量: {energy_bar}){immobilized_note}")
             
-            # 【v39 修改】技能顺序调整：光之剑(普攻) -> 充能 -> 光哟(EX)
             # [1] 普通攻击
             print(f"   [1] {phys_skill.name} [普通攻击]")
             print(f"       说明: {phys_skill.desc}")
@@ -152,7 +161,6 @@ class Player:
             print(f"       射程: N/A")
 
             # [3] EX技能
-            # 计算大招倍率
             base_multiplier = ex_skill.multiplier
             energy_bonus = 0.5 
             stack_bonus = 1.0 + (self.energy * energy_bonus)
@@ -179,7 +187,6 @@ class Player:
                     if '-' in combined_input:
                         parts = combined_input.split('-')
                         try:
-                            # 新逻辑：直接读取位置坐标
                             target_pos = int(parts[0])
                             skill_idx = int(parts[1])
                         except ValueError:
@@ -188,15 +195,13 @@ class Player:
                     else:
                         try:
                             skill_idx = int(combined_input)
-                            target_pos = None # 未指定位置
+                            target_pos = None 
                         except ValueError:
                             print("   ❌ 输入无效，请输入数字")
                             continue
 
-                    # 根据位置寻找目标
                     potential_target = None
                     if target_pos is not None:
-                        # 遍历敌人列表，寻找 position 匹配的对象
                         for enemy in alive_enemies:
                             if enemy.position == target_pos:
                                 potential_target = enemy
@@ -206,30 +211,25 @@ class Player:
                             print(f"   ❌ 警告：第 {target_pos} 号位没有找到敌人！(可能是空位或队友)")
                             continue
                     else:
-                        # 如果没指定位置，默认攻击第一个敌人（兼容旧习惯）
                         if alive_enemies:
                             potential_target = alive_enemies[0]
                         else:
                             potential_target = None
                     
                     # 检查射程
-                    if skill_idx == 1: # 物理攻击
+                    if skill_idx == 1: 
                         skill_range = phys_skill.range
                         if potential_target:
                             dist = abs(potential_target.position - self.position)
                             if dist > skill_range:
                                 print(f"   ❌ 目标太远啦！射程只有 {skill_range}，距离是 {dist}！")
-                                print(f"   请选择射程内的目标，或者取消攻击。")
                                 continue
                         
-                    elif skill_idx == 3: # EX技能 (全屏) -> 注意索引变为3
-                        pass # 不需要检查，因为是 AOE
-
                     if skill_idx not in [1, 2, 3]:
                         print(f"   技能序号无效 (1-3)，默认执行普通攻击")
                         skill_idx = 1
                     
-                    if skill_idx == 3 and self.energy < 2: # 注意索引变为3
+                    if skill_idx == 3 and self.energy < 2: 
                         print(f"   ❌ 能量不足！无法发动必杀技！(当前能量: {self.energy})")
                         print(f"   请重新输入指令。")
                         continue 
@@ -242,34 +242,30 @@ class Player:
                     skill_idx = 1
                     break
 
-            # 执行技能
-            if skill_idx == 1:
-                # 物理攻击 (修复版：真正造成伤害 + 标准格式 v34 + 台词修正 v35 + Quote 版 v36 & v38/v39感叹号修复)
-                dmg = int(random.randint(self.atk - 5, self.atk + 5))
-                
-                # 【修复】真正调用 take_damage 进行伤害结算
-                result = potential_target.take_damage(dmg)
-                actual_dmg = result['final_dmg']
-                
-                # 暴击判定
-                is_crit = random.random() < 0.1
-                if is_crit:
-                    actual_dmg = int(actual_dmg * 1.5)
-                    msg = f"✨ {self.name} 对 {potential_target.name} 进行了暴击攻击! 造成 {actual_dmg} 点伤害!"
-                else:
-                    msg = f"✨ {self.name} 对 {potential_target.name} 进行了普通攻击! 造成 {actual_dmg} 点伤害!"
-                
-                # 【v39 修正】统一使用双引号，去掉外部感叹号
-                print(f"   🗡️ {self.name} 喊道: \"{phys_skill.quote}\"")
-                print(f"   > {msg}")
-                
-                return {"type": "normal_attack", "msg": msg, "damage": actual_dmg, "target": potential_target}
+            # --- 执行技能 (统一移交 control 给 skill.py) ---
             
-            elif skill_idx == 2: # 注意索引变为2
+            if skill_idx == 1:
+                # 物理攻击
+                # 构造参数包：
+                # multiplier=1.0 (基于 ATK), variance=5 (±5波动), crit_rate=0.1 (10%暴击)
+                params = {
+                    'multiplier': 1.0, 
+                    'variance': 5, 
+                    'crit_rate': self.crit_rate
+                }
+                
+                # 调用 skill.execute
+                # 注意：这里 potential_target 必须是个列表传给 execute，因为它是面向群体的接口
+                logs = phys_skill.execute(self, [potential_target], params)
+                for log in logs:
+                    print(log)
+                
+                # 【v42-hotfix】标注此技能已由模块处理完毕
+                return {"type": "skill_module_handled", "msg": "Skill executed via module", "target": potential_target}
+            
+            elif skill_idx == 2:
                 # 充能逻辑
                 self.energy += 1
-                # 【修复】增加打印语句
-                # 【v39 修正】使用双引号，去掉外部感叹号
                 print(f"   ⚡ {self.name} 喊道: \"{charge_skill.quote}\"")
                 return {
                     "type": "alice_charge",
@@ -277,57 +273,43 @@ class Player:
                 }
             
             else: # skill_idx == 3
-                # 释放大招 (特殊逻辑：消耗能量并增加伤害)
-                base_multiplier = ex_skill.multiplier
-                energy_bonus = 0.5 
-                crit_chance = 0.15
-                crit_mult = 2.0
+                # 释放大招
+                # 计算总倍率
+                total_multiplier = base_multiplier * (1.0 + (self.energy * energy_bonus))
                 
-                base_dmg = self.atk * base_multiplier
-                stack_bonus = 1.0 + (self.energy * energy_bonus)
-                final_multiplier = base_dmg * stack_bonus
+                # 构造参数包
+                params = {
+                    'multiplier': total_multiplier, 
+                    'crit_rate': 0.15, # 大招暴击率稍高
+                    'variance': 0     # 大招通常不浮动，或者是巨大的固定值
+                }
                 
-                is_crit = random.random() < crit_chance
-                if is_crit:
-                    final_multiplier *= crit_mult
+                self.energy = 0
                 
-                damage = int(final_multiplier)
-                self.energy = 0 
-                
-                # 执行伤害 (修改为AOE逻辑)
-                # 【v39 修正】使用双引号，去掉外部感叹号
                 print(f"   🌟 {self.name} 喊道: \"{ex_skill.quote}\"")
                 print(f"   > 释放出覆盖全场的巨大电磁炮！")
                 
-                for target in alive_enemies:
-                    result = target.take_damage(damage)
-                    print(f"   > 对 {target.name} 造成 {result['final_dmg']} 点巨额伤害!")
-                    if not target.is_alive():
-                        # 获取倒地台词，如果没有则使用默认文本
-                        death_msg = getattr(target, 'death_msg', f"{target.name} 倒下了...")
-                        print(f"   💀 {target.name} 倒下了... \"{death_msg}\"")
+                # 将所有活着的敌人传给 AOE 技能
+                logs = ex_skill.execute(self, alive_enemies, params)
+                for log in logs:
+                    print(log)
                 
                 return {
-                    "type": "alice_ex",
-                    "msg": f"🌟 {self.name} 喊道: \"{ex_skill.quote}\"",
-                    "damage": damage,
-                    "is_crit": is_crit,
+                    "type": "skill_module_handled",
+                    "msg": "EX Skill executed via module",
                     "target": potential_target
                 }
 
         elif self.name == "柚子":
-            # 柚子 AI (修复版：智能选择目标 + 射程检测 + 语音台词增强版 v32 + 台词修正 v35 + Quote 版 v36 & 修复重复台词版 v37 & 格式统一修复版)
             super_skill = get_skill("yuzu_super")
             normal_skill = get_skill("yuzu_normal")
             
-            # 寻找射程内的敌人
             valid_targets = self._find_valid_targets(enemies, normal_skill.range)
             
             if not valid_targets:
                 print(f"   ⚠️ {self.name} 发现周围没有射程内的敌人！")
                 return {"type": "no_target", "msg": "没有目标"}
 
-            # 优先攻击 HP 最低的
             target = min(valid_targets, key=lambda x: x.hp)
             
             if not self.has_used_super and random.random() < super_skill.chance:
@@ -335,144 +317,96 @@ class Player:
                 # 检查大招射程
                 valid_super_targets = self._find_valid_targets(enemies, super_skill.range)
                 if valid_super_targets:
-                    # 【v37 修复】不再手动打印喊话，因为 execute 内部已经处理了
-                    # print(f"   🎮 {self.name} 喊道: '{super_skill.quote}'!")
-                    
-                    # 执行眩晕效果
                     logs = super_skill.execute(self, [target], {})
                     for log in logs:
                         print(log)
                     return {
                         "type": "super_attack",
-                        # 【格式统一】改为双引号，去掉感叹号
-                        "msg": f"🎮 {self.name} 喊道: \"{super_skill.name}\" 造成了眩晕！",
+                        "msg": "Super executed via module",
                         "effect": "stun"
                     }
             
-            # 普通攻击
-            # 【v37 修复】不再手动打印喊话，因为 execute 内部已经处理了
-            # print(f"   🎮 {self.name} 喊道: '{normal_skill.quote}'!")
-            
-            logs = normal_skill.execute(self, [target], {})
+            # 普通攻击 -> 统一调用
+            params = {'multiplier': 1.0, 'variance': 0, 'crit_rate': self.crit_rate}
+            logs = normal_skill.execute(self, [target], params)
             for log in logs:
                 print(log)
             return {
                 "type": "normal_attack",
-                "msg": f"💥 {self.name} 进行普通攻击。造成 {self.atk} 点伤害！",
-                "damage": self.atk
+                "msg": "Normal attack executed via module",
+                "target": target
             }
                 
         elif self.name == "小绿":
-            # 小绿 AI (修复版：看全队血量 + 射程检测 + 台词修正 v35 + Quote 版 v36 & 格式统一修复版)
-            # 检查是否有队友受伤
             injured_players = [p for p in party if p != self and p.hp < p.max_hp]
             
             if injured_players:
-                # 有伤员，进行治疗
                 heal_skill = get_skill("midori_heal")
-                # 【格式统一】改为双引号，去掉感叹号
-                print(f"   🎨 {self.name} 喊道: \"{heal_skill.quote}\"")
-                
-                # 治疗不需要目标列表，直接在 main.py 处理全队
-                return {
-                    "type": "heal",
-                    "msg": f"🎨 {self.name} 发动【{heal_skill.name}】！画出了治愈的颜料！",
-                    "amount": 25 # 默认治疗量
-                }
+                # 治疗也交给 skill 模块处理
+                # 为了让 main.py 不重复加血，我们改变返回的 type
+                logs = heal_skill.execute(self, injured_players, {})
+                for log in logs:
+                    print(log)
+                return {"type": "skill_module_handled", "msg": "Heal executed via module"}
             else:
-                # 大家都满血，进行普通攻击
                 valid_targets = self._find_valid_targets(enemies, get_skill('midori_normal').range)
                 if valid_targets:
                     target = random.choice(valid_targets)
-                    dmg = self.atk
-                    result = target.take_damage(dmg)
-                    # 【格式统一】改为双引号，去掉感叹号
-                    print(f"   🎨 {self.name} 喊道: \"{get_skill('midori_normal').quote}\" 对 {target.name} 造成 {result['final_dmg']} 点伤害！")
-                    return {
-                        "type": "normal_attack",
-                        "msg": f"🎨 {self.name} 进行了普通的画笔攻击。造成 {result['final_dmg']} 点伤害！",
-                        "damage": result['final_dmg']
-                    }
+                    # 统一调用攻击
+                    params = {'multiplier': 1.0, 'variance': 5, 'crit_rate': self.crit_rate}
+                    logs = get_skill('midori_normal').execute(self, [target], params)
+                    for log in logs:
+                        print(log)
+                    return {"type": "normal_attack", "msg": "Attacked via module", "target": target}
                 else:
                     return {"type": "no_target", "msg": "没有目标"}
             
         elif self.name == "桃井":
-            # 桃井 AI (修复版：真正的普通攻击 + 射程检测 + 语音台词增强版 v32 + 格式修正 v34 + 台词修正 v35 + Quote 版 v36 & 格式统一修复版)
             roll = random.random()
-            
-            # 查找射程内的敌人
             valid_targets = self._find_valid_targets(enemies, get_skill('momoi_normal').range)
             
             if not valid_targets:
                 return {"type": "no_target", "msg": "没有目标"}
 
             if roll < 0.3:
-                # 普通攻击 (修复版：真正造成伤害 + 标准格式 v34 + 台词修正 v35 + Quote 版 v36)
                 target = random.choice(valid_targets)
-                dmg = self.atk
-                result = target.take_damage(dmg)
-                # 【格式统一】改为双引号，去掉感叹号
-                print(f"   📝 {self.name} 喊道: \"{get_skill('momoi_normal').quote}\" 对 {target.name} 造成 {result['final_dmg']} 点伤害！")
-                return {
-                    "type": "normal_attack",
-                    "msg": f"📝 {self.name} 进行了普通的投掷攻击。造成 {result['final_dmg']} 点伤害！",
-                    "damage": result['final_dmg']
-                }
+                params = {'multiplier': 1.0, 'variance': 5, 'crit_rate': self.crit_rate}
+                logs = get_skill('momoi_normal').execute(self, [target], params)
+                for log in logs:
+                    print(log)
+                return {"type": "normal_attack", "msg": "Attacked via module", "target": target}
             elif roll < 0.6:
-                # Debuff
                 effect_type = random.choice(["attack_down", "defense_down"])
                 skill_id = "momoi_debuff_atk" if effect_type == "attack_down" else "momoi_debuff_def"
                 skill = get_skill(skill_id)
-                
-                # 【修复】增加打印语句
-                # 【格式统一】改为双引号，去掉感叹号
-                print(f"   📝 {self.name} 喊道: \"{skill.quote}\"")
-                
-                return {
-                    "type": "plot_debuff",
-                    # 【格式统一】改为双引号，去掉感叹号
-                    "msg": f"📝 {self.name} 大喊：\"{skill.name}\"",
-                    "effect": effect_type
-                }
+                # 随机选择一个目标施加 Debuff
+                target = random.choice(valid_targets)
+                logs = skill.execute(self, [target], {})
+                for log in logs:
+                    print(log)
+                # 【v42-hotfix】标注已处理
+                return {"type": "skill_module_handled", "msg": "Debuff applied via module", "effect": effect_type}
             else:
-                # Buff
                 effect_type = random.choice(["heal", "atk_up"])
                 amount = random.randint(15, 25)
                 if effect_type == "heal":
-                     # 【修复】增加打印语句，引用 skill.py 中的技能
                      heal_skill = get_skill("momoi_heal")
-                     # 【格式统一】改为双引号，去掉感叹号
-                     print(f"   📝 {self.name} 喊道: \"{heal_skill.quote}\"")
-                     
-                     return {
-                        "type": "plot_buff",
-                        # 【格式统一】改为双引号，去掉感叹号
-                        "msg": f"📝 {self.name} 大喊：\"{heal_skill.name}\"",
-                        "effect": "heal",
-                        "amount": amount
-                    }
+                     # 治疗自己
+                     logs = heal_skill.execute(self, [self], {})
+                     for log in logs:
+                         print(log)
+                     # 【v42-hotfix】标注已处理
+                     return {"type": "skill_module_handled", "msg": "Buffed via module", "effect": "heal", "amount": amount}
                 else:
-                    # Atk Up Buff
                     skill = get_skill("momoi_buff")
-                    # 【修复】增加打印语句
-                    # 【格式统一】改为双引号，去掉感叹号
-                    print(f"   📝 {self.name} 喊道: \"{skill.quote}\"")
-                    
-                    return {
-                        "type": "plot_buff",
-                        # 【格式统一】改为双引号，去掉感叹号
-                        "msg": f"📝 {self.name} 大喊：\"{skill.name}\"",
-                        "effect": "atk_up",
-                        "amount": int(self.atk * 0.2)
-                    }
+                    logs = skill.execute(self, [self], {})
+                    for log in logs:
+                        print(log)
+                    # 【v42-hotfix】标注已处理
+                    return {"type": "skill_module_handled", "msg": "Buffed via module", "effect": "atk_up", "amount": int(self.atk * 0.2)}
             
         else:
-            # 默认普通攻击
-            return {
-                "type": "normal_attack",
-                "msg": f"💥 {self.name} 进行普通攻击。造成 {self.atk} 点伤害！",
-                "damage": self.atk
-            }
+            return {"type": "normal_attack", "msg": "Unknown character", "damage": self.atk}
 
 # --- 数据常量 ---
 PLAYERS_DATA = [

@@ -1,12 +1,14 @@
 # skill.py
-# 战斗模拟器 v29 - 技能模块化管理中心 (爱丽丝友情加成版)
-# 核心改进：为爱丽丝的基础攻击增加了专属台词“友情的力量！”！
+# 战斗模拟器 v42 - 技能模块化管理中心 (统一伤害与死亡结算版)
+# 核心改进：
+# 1. 强化 AttackEffect，支持从 params 传入自定义暴击率、倍率修正。
+# 2. 确保所有攻击类技能在此处统一执行伤害计算和死亡检测，杜绝遗漏。
 
 import random
 
-# ==============================================================================
+# ==============================================================================\
 # 1. 技能效果类 (Skill Effect Classes)
-# ==============================================================================
+# ==============================================================================\
 
 class BaseSkillEffect:
     """技能效果的基类"""
@@ -36,18 +38,27 @@ class AttackEffect(BaseSkillEffect):
         if self.quote:
             logs.append(f"   🗣️ {caster.name}: 「{self.quote}」")
             
+        # 【v42 改进】从 params 获取配置，允许外部（如 player.py）动态调整暴击率或倍率
+        # 优先使用 params 传入的值，其次使用角色自带的属性（如果有的话），最后是技能默认值
+        crit_rate = params.get('crit_rate', getattr(caster, 'crit_rate', 0.1))
+        effective_multiplier = params.get('multiplier', self.multiplier)
+        effective_variance = params.get('variance', self.variance)
+        
         for target in targets:
             if not target.is_alive():
                 continue
             
-            base_dmg = caster.atk * self.multiplier
-            final_dmg = int(base_dmg + random.randint(-self.variance, self.variance))
+            # 伤害计算公式：(攻击力 * 倍率) +/- 浮动值
+            base_dmg = caster.atk * effective_multiplier
+            final_dmg = int(base_dmg + random.randint(-effective_variance, effective_variance))
             
             is_crit = False
-            if self.is_crit or random.random() < 0.1:
+            # 必爆标记 或 随机判定
+            if self.is_crit or random.random() < crit_rate:
                 final_dmg = int(final_dmg * self.crit_mult)
                 is_crit = True
             
+            # 造成伤害
             result = target.take_damage(final_dmg)
             
             log_msg = f"   💥 {caster.name} 对 {target.name} 造成了 {result['final_dmg']} 点伤害!"
@@ -55,6 +66,7 @@ class AttackEffect(BaseSkillEffect):
                 log_msg += " (暴击!)"
             logs.append(log_msg)
             
+            # 【v42 核心】统一在这里处理死亡检测
             if not target.is_alive():
                 death_msg = getattr(target, 'death_msg', f"{target.name} 倒下了...")
                 logs.append(f"   💀 {target.name} 倒下了... \"{death_msg}\"")
@@ -81,12 +93,19 @@ class AoEAttackEffect(AttackEffect):
         else:
             selected_targets = alive_targets
 
+        # 复用父类的 execute 逻辑，但需要稍微适配一下循环
+        # 为了避免代码重复，我们手动写一遍类似的逻辑，应用 params
+        
+        crit_rate = params.get('crit_rate', getattr(caster, 'crit_rate', 0.1))
+        effective_multiplier = params.get('multiplier', self.multiplier)
+        effective_variance = params.get('variance', self.variance)
+
         for target in selected_targets:
-            base_dmg = caster.atk * self.multiplier
-            final_dmg = int(base_dmg + random.randint(-self.variance, self.variance))
+            base_dmg = caster.atk * effective_multiplier
+            final_dmg = int(base_dmg + random.randint(-effective_variance, effective_variance))
             
             is_crit = False
-            if self.is_crit or random.random() < 0.1:
+            if self.is_crit or random.random() < crit_rate:
                 final_dmg = int(final_dmg * self.crit_mult)
                 is_crit = True
             
@@ -174,7 +193,7 @@ class DebuffEffect(BaseSkillEffect):
         return logs
 
 class StunEffect(BaseSkillEffect):
-    """眩晕效果"""
+    """眩晕效果（无法行动一回合）"""
     def __init__(self, name, desc, quote="", chance=1.0, range=1):
         super().__init__(name, desc, quote=quote, range=range)
         self.chance = chance
@@ -193,6 +212,25 @@ class StunEffect(BaseSkillEffect):
                 logs.append(f"   💫 {target.name} 被眩晕了！无法行动！")
             else:
                 logs.append(f"   ❌ {target.name} 抵抗了眩晕！")
+        return logs
+
+class ImmobilizeEffect(BaseSkillEffect):
+    """束缚/定身效果（无法移动，但可以行动，持续多回合）"""
+    def __init__(self, name, desc, quote="", duration=5, range=1):
+        super().__init__(name, desc, quote=quote, range=range)
+        self.duration = duration
+
+    def execute(self, caster, targets, params):
+        logs = []
+        if self.quote:
+            logs.append(f"   🗣️ {caster.name}: 「{self.quote}」")
+            
+        alive_targets = [t for t in targets if t.is_alive()]
+        if alive_targets:
+            target = random.choice(alive_targets)
+            target.is_immobilized = True
+            target.add_status_effect("🕸️", self.name, self.duration, "immobilized", 0)
+            logs.append(f"   🕸️ {target.name} 被 {caster.name} 的【{self.name}】束缚住了！（无法移动，持续 {self.duration} 回合）")
         return logs
 
 class SelfHealEffect(BaseSkillEffect):
@@ -246,22 +284,10 @@ class LifestealEffect(BaseSkillEffect):
             logs.append(f"   💀 {target.name} 倒下了... \"{death_msg}\"")
         return logs
 
-class TrapEffect(BaseSkillEffect):
-    """陷阱/束缚效果"""
-    def __init__(self, name, desc, quote="", range=1):
-        super().__init__(name, desc, quote=quote, range=range)
-
-    def execute(self, caster, targets, params):
-        logs = []
-        if self.quote:
-            logs.append(f"   🗣️ {caster.name}: 「{self.quote}」")
-            
-        alive_targets = [t for t in targets if t.is_alive()]
-        if alive_targets:
-            target = random.choice(alive_targets)
-            target.is_stunned = True
-            logs.append(f"   🕸️ {target.name} 被 {caster.name} 的【{self.name}】束缚住了！")
-        return logs
+class TrapEffect(ImmobilizeEffect):
+    """陷阱/束缚效果（兼容旧代码，继承自 ImmobilizeEffect）"""
+    def __init__(self, name, desc, quote="", duration=5, range=1):
+        super().__init__(name, desc, quote=quote, duration=duration, range=range)
 
 class CleanseEffect(BaseSkillEffect):
     """清除增益效果"""
@@ -284,9 +310,9 @@ class CleanseEffect(BaseSkillEffect):
                 logs.append(f"   ✨ {target.name} 没有增益效果可以被清除。")
         return logs
 
-# ==============================================================================
-# 2. 技能注册表 (Skill Registry) - v29 爱丽丝友情版
-# ==============================================================================
+# ==============================================================================\
+# 2. 技能注册表 (Skill Registry) - v42 统一结算版
+# ==============================================================================\
 
 SKILL_REGISTRY = {
     # --- 基础攻击 (近战基准) ---
@@ -295,6 +321,7 @@ SKILL_REGISTRY = {
     # --- 玩家技能 (Team Skills) ---
     # 爱丽丝
     "alice_charge": BaseSkillEffect("光啊！赐予我力量！", "正在积蓄光之剑的能量", quote="友情的力量！", cost=0, range=1),
+    # 注意：alice_ex 虽然是 AoE，但在 player.py 中有极其特殊的倍率算法，所以定义上只是一个模板
     "alice_ex": AoEAttackEffect("世界的法则即将崩坏！光哟！！！","释放出覆盖全场的巨大电磁炮", quote="世界的法则即将崩坏！光哟！！！ ", multiplier=5.91, variance=0, is_crit=True, crit_mult=2.0, range=99),
     "alice_physical": AttackEffect("光之剑，出鞘吧", "挥舞光之剑进行斩击", quote="接招吧！光之剑！", multiplier=1.0, variance=5, range=2), 
     
@@ -349,7 +376,7 @@ SKILL_REGISTRY = {
     "vine_lash": AttackEffect("藤蔓横扫", "甩动藤蔓进行攻击", quote="缠绕上来！", multiplier=0.6, variance=5, range=4),
     "throw_rock": AttackEffect("投掷石块", "投掷了尖锐的石块", quote="接招！石头！", multiplier=1.3, variance=8, range=6),
     "dragon_wing_slap": AttackEffect("龙翼拍击", "用巨大的龙翼横扫", quote="风压！", multiplier=1.5, variance=5, range=5),
-    "web_trap": TrapEffect("蛛网束缚", "布置了致命的蛛网陷阱", quote="别想逃！", range=5),
+    "web_trap": TrapEffect("蛛网束缚", "布置了致命的蛛网陷阱", quote="别想逃！", duration=5, range=5),
     "cry": DebuffEffect("嚎叫 (降低敌方攻击)", "发出了令人胆寒的嚎叫", quote="嗷呜————！", stat="atk", value=0.2, duration=2, icon="😱", range=6),
     
     # 【远程梯队 Range 7-10】
@@ -368,9 +395,9 @@ SKILL_REGISTRY = {
     "void_collapse": CleanseEffect("视界崩坏", "清除我方增益效果", quote="世界崩坏了！", range=99),
 }
 
-# ==============================================================================
+# ==============================================================================\
 # 3. 辅助函数
-# ==============================================================================
+# ==============================================================================\
 
 def get_skill(skill_id):
     """从注册表中获取技能实例"""
