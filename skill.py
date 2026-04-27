@@ -1,21 +1,22 @@
 # skill.py
-# 战斗模拟器 v42 - 技能模块化管理中心 (统一伤害与死亡结算版)
+# 战斗模拟器 v44 - 技能模块化管理中心 (最终修正版)
 # 核心改进：
-# 1. 强化 AttackEffect，支持从 params 传入自定义暴击率、倍率修正。
-# 2. 确保所有攻击类技能在此处统一执行伤害计算和死亡检测，杜绝遗漏。
+# 1. 移除 SequenceEffect 的冗余系统提示，保持战斗日志清爽。
+# 2. 爱丽丝的技能组全面复古：普攻还原为“光之剑，出鞘吧”，EX技能维持经典的“世界的法则即将崩坏！光哟！！！”。
+# 3. 【重要修正】爱丽丝普攻虽然改名，但**依然保留**原有的“物理斩击+致盲”双重效果，未做任何削弱！
 
 import random
 
-# ==============================================================================\
+# ==============================================================================
 # 1. 技能效果类 (Skill Effect Classes)
-# ==============================================================================\
+# ==============================================================================
 
 class BaseSkillEffect:
     """技能效果的基类"""
     def __init__(self, name, desc, quote="", cost=0, range=1):
         self.name = name
         self.desc = desc
-        self.quote = quote  # 新增：台词属性
+        self.quote = quote  
         self.cost = cost
         self.range = range
 
@@ -34,12 +35,9 @@ class AttackEffect(BaseSkillEffect):
 
     def execute(self, caster, targets, params):
         logs = []
-        # 如果有台词，优先显示台词
         if self.quote:
             logs.append(f"   🗣️ {caster.name}: 「{self.quote}」")
             
-        # 【v42 改进】从 params 获取配置，允许外部（如 player.py）动态调整暴击率或倍率
-        # 优先使用 params 传入的值，其次使用角色自带的属性（如果有的话），最后是技能默认值
         crit_rate = params.get('crit_rate', getattr(caster, 'crit_rate', 0.1))
         effective_multiplier = params.get('multiplier', self.multiplier)
         effective_variance = params.get('variance', self.variance)
@@ -48,17 +46,14 @@ class AttackEffect(BaseSkillEffect):
             if not target.is_alive():
                 continue
             
-            # 伤害计算公式：(攻击力 * 倍率) +/- 浮动值
             base_dmg = caster.atk * effective_multiplier
             final_dmg = int(base_dmg + random.randint(-effective_variance, effective_variance))
             
             is_crit = False
-            # 必爆标记 或 随机判定
             if self.is_crit or random.random() < crit_rate:
                 final_dmg = int(final_dmg * self.crit_mult)
                 is_crit = True
             
-            # 造成伤害
             result = target.take_damage(final_dmg)
             
             log_msg = f"   💥 {caster.name} 对 {target.name} 造成了 {result['final_dmg']} 点伤害!"
@@ -66,7 +61,6 @@ class AttackEffect(BaseSkillEffect):
                 log_msg += " (暴击!)"
             logs.append(log_msg)
             
-            # 【v42 核心】统一在这里处理死亡检测
             if not target.is_alive():
                 death_msg = getattr(target, 'death_msg', f"{target.name} 倒下了...")
                 logs.append(f"   💀 {target.name} 倒下了... \"{death_msg}\"")
@@ -83,7 +77,8 @@ class AoEAttackEffect(AttackEffect):
         if self.quote:
             logs.append(f"   🗣️ {caster.name}: 「{self.quote}」")
         
-        logs.append(f"   ✨ {caster.name} 使用了群体攻击【{self.name}】！")
+        # 【v44 优化】不再打印冗长的技能类型提示，直接造成伤害
+        # logs.append(f"   ✨ {caster.name} 使用了群体攻击【{self.name}】！")
         
         alive_targets = [t for t in targets if t.is_alive()]
         
@@ -93,9 +88,6 @@ class AoEAttackEffect(AttackEffect):
         else:
             selected_targets = alive_targets
 
-        # 复用父类的 execute 逻辑，但需要稍微适配一下循环
-        # 为了避免代码重复，我们手动写一遍类似的逻辑，应用 params
-        
         crit_rate = params.get('crit_rate', getattr(caster, 'crit_rate', 0.1))
         effective_multiplier = params.get('multiplier', self.multiplier)
         effective_variance = params.get('variance', self.variance)
@@ -291,6 +283,93 @@ class TrapEffect(ImmobilizeEffect):
 
 class CleanseEffect(BaseSkillEffect):
     """清除增益效果"""
+    def __init__(self, name, desc, quote="", range=1, clear_energy=False):
+        super().__init__(name, desc, quote=quote, range=range)
+        # 【v43 新增】可选参数：是否同时清除目标的能量条
+        self.clear_energy = clear_energy
+
+    def execute(self, caster, targets, params):
+        logs = []
+        if self.quote:
+            logs.append(f"   🗣️ {caster.name}: 「{self.quote}」")
+            
+        for target in targets:
+            if not target.is_alive():
+                continue
+            
+            has_effects = hasattr(target, 'status_effects') and target.status_effects
+            has_energy = hasattr(target, 'energy') and target.energy > 0
+            
+            # 清除增益/Buff
+            if has_effects:
+                target.status_effects = []
+                logs.append(f"   ✨ {target.name} 的所有增益效果被【{self.name}】清除了！")
+            else:
+                logs.append(f"   ✨ {target.name} 没有增益效果可以被清除。")
+                
+            # 【v43 新增】清除能量
+            if self.clear_energy and has_energy:
+                old_energy = target.energy
+                target.energy = 0
+                logs.append(f"   🔋 {target.name} 的能量被抽空了！(减少了 {old_energy} 层)")
+        return logs
+
+# ==============================================================================\
+# 【v43 新增】 高级/特殊效果类
+# ==============================================================================\
+
+class DotEffect(BaseSkillEffect):
+    """持续伤害效果 (Damage over Time)"""
+    def __init__(self, name, desc, quote="", damage_per_tick=10, duration=3, icon="☠️", range=1):
+        super().__init__(name, desc, quote=quote, range=range)
+        self.damage_per_tick = damage_per_tick
+        self.duration = duration
+
+    def execute(self, caster, targets, params):
+        logs = []
+        if self.quote:
+            logs.append(f"   🗣️ {caster.name}: 「{self.quote}」")
+            
+        for target in targets:
+            if not target.is_alive():
+                continue
+            
+            # 使用特殊的 effect type: dot
+            target.add_status_effect(self.icon, self.name, self.duration, "dot", self.damage_per_tick)
+            logs.append(f"   ☠️ {target.name} 中了【{self.name}】！将持续受到伤害！")
+        return logs
+
+class BlindEffect(BaseSkillEffect):
+    """致盲效果（视线遮蔽，导致随机移动并跳过行动阶段）"""
+    def __init__(self, name, desc, quote="", duration=1, chance=1.0, range=1):
+        super().__init__(name, desc, quote=quote, range=range)
+        self.duration = duration
+        self.chance = chance
+
+    def execute(self, caster, targets, params):
+        logs = []
+        if self.quote:
+            logs.append(f"   🗣️ {caster.name}: 「{self.quote}」")
+            
+        # 优先从 params 获取自定义的持续时间或概率
+        # 这允许我们在调用时动态调整效果强度
+        effective_duration = params.get('blind_duration', self.duration)
+        effective_chance = params.get('blind_chance', self.chance)
+
+        for target in targets:
+            if not target.is_alive():
+                continue
+            
+            if random.random() < effective_chance:
+                target.is_blinded = True
+                target.add_status_effect("👁️❌", self.name, effective_duration, "blind", 0)
+                logs.append(f"   👁️❌ {target.name} 陷入了致盲状态！视野全黑！")
+            else:
+                logs.append(f"   🛡️ {target.name} 保持了冷静，未被致盲！")
+        return logs
+
+class EnergyBlockEffect(BaseSkillEffect):
+    """能量清空效果（直接抽干目标当前的能量）"""
     def __init__(self, name, desc, quote="", range=1):
         super().__init__(name, desc, quote=quote, range=range)
 
@@ -303,16 +382,37 @@ class CleanseEffect(BaseSkillEffect):
             if not target.is_alive():
                 continue
             
-            if hasattr(target, 'status_effects') and target.status_effects:
-                target.status_effects = []
-                logs.append(f"   ✨ {target.name} 的所有增益效果被【{self.name}】清除了！")
+            if hasattr(target, 'energy') and target.energy > 0:
+                old_energy = target.energy
+                target.energy = 0
+                logs.append(f"   🔋💨 {target.name} 的能量被 {caster.name} 瞬间抽空了！(减少了 {old_energy} 层)")
             else:
-                logs.append(f"   ✨ {target.name} 没有增益效果可以被清除。")
+                logs.append(f"   ❌ {target.name} 目前没有能量可以被抽取。")
         return logs
 
-# ==============================================================================\
-# 2. 技能注册表 (Skill Registry) - v42 统一结算版
-# ==============================================================================\
+class SequenceEffect(BaseSkillEffect):
+    """连携/序列技能效果（百宝箱）"""
+    def __init__(self, name, desc, quote="", effects=None, range=1):
+        super().__init__(name, desc, quote=quote, range=range)
+        self.effects = effects or []
+
+    def execute(self, caster, targets, params):
+        logs = []
+        if self.quote:
+            logs.append(f"   🗣️ {caster.name}: 「{self.quote}」")
+        # 【v44 优化】移除“发动了复合技能”的系统提示，保持界面清爽
+        
+        for effect in self.effects:
+            # 递归执行子技能
+            sub_logs = effect.execute(caster, targets, params)
+            logs.extend(sub_logs)
+            
+        return logs
+
+
+# ==============================================================================
+# 2. 技能注册表 (Skill Registry) - v44 最终修正版
+# ==============================================================================
 
 SKILL_REGISTRY = {
     # --- 基础攻击 (近战基准) ---
@@ -321,9 +421,20 @@ SKILL_REGISTRY = {
     # --- 玩家技能 (Team Skills) ---
     # 爱丽丝
     "alice_charge": BaseSkillEffect("光啊！赐予我力量！", "正在积蓄光之剑的能量", quote="友情的力量！", cost=0, range=1),
-    # 注意：alice_ex 虽然是 AoE，但在 player.py 中有极其特殊的倍率算法，所以定义上只是一个模板
+    # 【v44 改动】爱丽丝的EX技能维持最初的经典名称不变
     "alice_ex": AoEAttackEffect("世界的法则即将崩坏！光哟！！！","释放出覆盖全场的巨大电磁炮", quote="世界的法则即将崩坏！光哟！！！ ", multiplier=5.91, variance=0, is_crit=True, crit_mult=2.0, range=99),
-    "alice_physical": AttackEffect("光之剑，出鞘吧", "挥舞光之剑进行斩击", quote="接招吧！光之剑！", multiplier=1.0, variance=5, range=2), 
+    
+    # 【v44 终极修正】爱丽丝的普攻改名为“光之剑，出鞘吧”，并恢复为包含致盲效果的复合技能
+    "alice_physical": SequenceEffect(
+        "光之剑，出鞘吧",
+        "挥舞光之剑发起附带致盲效果的重斩",
+        quote="接招吧！光之剑！",
+        effects=[
+            AttackEffect("物理斩击", "挥动光之剑造成物理伤害", multiplier=1.0, variance=5, range=2),
+            BlindEffect("闪光致盲", "剑刃产生的强光致盲敌人", duration=1, chance=0.3, range=2)
+        ],
+        range=2
+    ), 
     
     # 柚子 (部门部长)
     "yuzu_super": StunEffect("Hit Stop!", "发动 Hit Stop 强制打断敌人行动", quote="Hit Stop!", chance=0.8, range=3),
@@ -392,7 +503,84 @@ SKILL_REGISTRY = {
     
     # 【超远程/全屏 (Full Screen)】
     "earthquake": AttackEffect("地震术", "引发了剧烈的地震", quote="大地的愤怒！", multiplier=0.8, variance=10, range=99),
-    "void_collapse": CleanseEffect("视界崩坏", "清除我方增益效果", quote="世界崩坏了！", range=99),
+    # 【v43 更新】视界崩坏增加了清空能量的选项
+    "void_collapse": CleanseEffect("视界崩坏", "清除我方增益效果并抽干能量", quote="世界崩坏了！", range=99, clear_energy=True),
+    
+    # ==============================================================================\
+    # 【v43 新增】 带有 DoT / 灼烧 / 出血 / 腐蚀 的复合技能
+    # ==============================================================================\
+    
+    # 史莱姆的中毒酸液
+    "acid_spit_dot": SequenceEffect(
+        "酸性毒雾",
+        "喷射带有剧毒的酸液",
+        quote="呸！有毒的哦！",
+        effects=[
+            AttackEffect("酸液溅射", "酸液附着在皮肤上造成初期伤害", multiplier=1.0, variance=3, range=8),
+            DotEffect("重度中毒", "毒素侵入体内持续破坏", damage_per_tick=8, duration=3, icon="☠️", range=8)
+        ],
+        range=8
+    ),
+    
+    # 食人花的中毒藤蔓
+    "vine_lash_dot": SequenceEffect(
+        "剧毒藤鞭",
+        "甩动带毒的藤蔓抽打敌人",
+        quote="尝尝我的汁液！",
+        effects=[
+            AttackEffect("藤蔓抽打", "坚韧的藤蔓造成伤害", multiplier=0.8, variance=5, range=4),
+            DotEffect("植物毒素", "伤口开始溃烂", damage_per_tick=10, duration=3, icon="☠️", range=4)
+        ],
+        range=4
+    ),
+    
+    # 暗影忍者的出血攻击
+    "shadow_kick_bleed": SequenceEffect(
+        "裂影断水脚",
+        "撕裂伤口的致命踢击",
+        quote="破！",
+        effects=[
+            AttackEffect("凌厉踢击", "集中一点突破防御", multiplier=1.5, variance=5, range=1),
+            DotEffect("大量出血", "伤口止不住地在流血", damage_per_tick=12, duration=4, icon="🩸", range=1)
+        ],
+        range=1
+    ),
+    
+    # 机械蜘蛛的腐蚀酸液
+    "acid_bite_corrosion": SequenceEffect(
+        "高浓缩酸液咬合",
+        "用能溶解钢铁的酸液进行攻击",
+        quote="解析中... 溶解中...",
+        effects=[
+            AttackEffect("酸性侵蚀", "酸液破坏表面装甲", multiplier=1.2, variance=5, range=1),
+            DotEffect("结构腐蚀", "身体结构受到持续破坏", damage_per_tick=15, duration=3, icon="🧪", range=1)
+        ],
+        range=1
+    ),
+    
+    # 古代巨龙的灼烧龙息
+    "dragon_breath_burn": SequenceEffect(
+        "狱炎吐息",
+        "喷吐出附带高温的火柱",
+        quote="化为灰烬吧！",
+        effects=[
+            AttackEffect("烈焰冲击", "火柱造成巨额伤害", multiplier=2.0, variance=10, range=9),
+            DotEffect("深度灼伤", "皮肉被点燃持续燃烧", damage_per_tick=20, duration=4, icon="🔥", range=9)
+        ],
+        range=9
+    ),
+    
+    # 虚空吞噬者的能量榨取版
+    "void_collapse_drain": SequenceEffect(
+        "虚无吞噬",
+        "吞没一切光芒与能量",
+        quote="归于虚无...",
+        effects=[
+            AttackEffect("虚空震荡", "暗物质波纹造成伤害", multiplier=1.5, variance=10, range=99),
+            CleanseEffect("能量剥夺", "强行吸干目标的能量", range=99, clear_energy=True)
+        ],
+        range=99
+    )
 }
 
 # ==============================================================================\

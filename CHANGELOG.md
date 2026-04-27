@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v44.0] - 2026-04-28
+### Added
+- **高级效果类库扩展**：新增 `DotEffect` (持续伤害)、`BlindEffect` (致盲)、`EnergyBlockEffect` (能量抽空) 以及 `SequenceEffect` (连携技能) 类，极大丰富了技能组合的可能性。
+- **Cleanse 增强**：`CleanseEffect` 现支持 `clear_energy` 参数，可在清除增益的同时抽空目标的能量槽。
+- **怪物技能池扩充**：为多种怪物（如史莱姆、食人花、暗影忍者等）添加了基于 `SequenceEffect` 的复合攻击技能（含中毒、出血、腐蚀等效果），提升了战斗的策略深度。
+
+### Changed
+- **爱丽丝技能组最终修正**：
+    - 爱丽丝普攻名称还原为 **"光之剑，出鞘吧"**，并**保留**了原有的致盲复合效果（SequenceEffect），未做任何削弱。
+    - 爱丽丝 EX 技能名称**维持**经典的 **"世界的法则即将崩坏！光哟！！！"**，未做删减。
+- **战斗日志优化**：移除了 `SequenceEffect`（连携/组合技能）在触发时打印的冗余系统提示（如“发动了复合技能”），使战斗界面更加清爽直观，符合复古 RPG 风格。
+
 ## [v42.0] - 2026-04-27
 ### Added
 - **参数化技能引擎**：`skill.py` 的 `AttackEffect` 类现支持通过 `params` 动态接收倍率 (`multiplier`)、浮动值 (`variance`) 和暴击率 (`crit_rate`)，解耦了角色属性与技能定义。
