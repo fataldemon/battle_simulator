@@ -1,10 +1,9 @@
 # main.py
-# 战斗模拟器 v43.1 - 主程序 (全员能量与高级状态重构版 + 物理挤压引擎)
+# 战斗模拟器 v44.2 - 主程序 (全员能量与高级状态重构版 + 物理挤压引擎 + 朝向与背刺系统)
 # 核心改进：
-# 1. 更新版本号为 v43.1，适配全新的物理挤压技能系统与状态系统。
-# 2. 【v43 新增】移动阶段增加对 is_blinded (致盲) 状态的判断，被致盲者无法主动选择位置，只会随机乱撞。
-# 3. 【v43 紧急修复】修复了怪物移动后未同步更新战场队列顺序导致的显示与实际位置不符的 Bug。
-# 4. 【v43.1 重大升级】全面启用物理挤压引擎：怪物行动时同步获取战场全貌，实现真实的队列推挤效果。
+# 1. 【v44.2 新增】朝向系统：每个人物都有 facing 属性，移动会改变朝向。
+# 2. 【v44.2 新增】背刺机制：攻击背对自己的敌人可获得 25% 伤害加成。
+# 3. 兼容此前的能量系统、高级状态等所有功能。
 
 import argparse
 import random
@@ -15,7 +14,7 @@ from utils import squeeze_move
 def init_game_random():
     """初始化游戏 - 随机副本模式"""
     print("=" * 50)
-    print("📜 团队副本模拟器 v43.1 (全员能量与高级状态重构版 + 物理挤压引擎)")
+    print("📜 团队副本模拟器 v44.2 (朝向与背刺系统版)")
     print("=" * 50)
     
     low_level_pool = [m for m in MONSTERS_DATA if m['level'] <= 5]
@@ -71,7 +70,7 @@ def init_game_custom(args):
         return init_game_random()
 
     print("=" * 50)
-    print("📜 团队副本模拟器 v43.1 (全员能量与高级状态重构版 + 物理挤压引擎)")
+    print("📜 团队副本模拟器 v44.2 (朝向与背刺系统版)")
     print("=" * 50)
     
     enemy_team = []
@@ -145,8 +144,9 @@ def check_game_over(enemy_team, party):
 
 def setup_battle_field(enemy_team, party):
     """
-    【v22 新增】初始化战场队列
+    【v22/v44.2 新增】初始化战场队列
     将玩家和怪物混合成一个列表，并根据阵营分配初始位置。
+    【v44.2 增强】确保朝向已正确初始化 (Player: 1, Monster: -1)
     """
     # 初始状态：玩家在前，怪物在后
     battle_field = party + enemy_team
@@ -155,18 +155,35 @@ def setup_battle_field(enemy_team, party):
     for i, unit in enumerate(battle_field):
         unit.position = i
         
+    # 【v44.2 确认】再次确认朝向设置 (虽然类初始化已经做了，但这里再保险一下)
+    for p in party:
+        p.facing = 1
+    for m in enemy_team:
+        m.facing = -1
+        
     print("\n📍 战场队列已初始化！")
     print(f"   我方站位：{[p.name for p in party]}")
     print(f"   敌方站位：{[m.name for m in enemy_team]}")
     
     return battle_field
 
+def print_battle_formation(battle_field, party):
+    """【v44.2 新增】打印战场站位概览的辅助函数"""
+    print("\n[战场站位概览]")
+    for i, unit in enumerate(battle_field):
+        if unit.is_alive():
+            prefix = "🟢" if unit in party else "🔴"
+            # 【v44.2 新增】显示朝向
+            unit_facing = "➡️" if getattr(unit, 'facing', 1) == 1 else "⬅️"
+            print(f"   {prefix} [{i}] {unit.name} {unit_facing}")
+
 def process_movement_phase(battle_field, enemy_team, party):
     """
-    【v43 重构】移动阶段
+    【v43/v44.2 重构】移动阶段
     新增：
     1. 检查 is_immobilized 状态，被束缚者无法移动。
     2. 检查 is_blinded 状态，被致盲者无法控制移动，只能随机乱撞。
+    3. 【v44.2】移动后朝向由 utils.squeeze_move 自动更新。
     """
     print("\n--- 🏃 移动阶段 ---")
     
@@ -192,6 +209,8 @@ def process_movement_phase(battle_field, enemy_team, party):
             if new_pos != alice.position:
                 squeeze_move(battle_field, alice, new_pos)
                 print(f"   🏃 爱丽丝 踉跄地挤到了第 {new_pos} 号位！")
+                # 【v44.2 修复】只有真正移动了才打印概览
+                print_battle_formation(battle_field, party)
             else:
                 print(f"   >> 爱丽丝在原地焦急地转了一圈，哪儿也没去成。")
                 
@@ -202,7 +221,8 @@ def process_movement_phase(battle_field, enemy_team, party):
         else:
             # 【v25 优化】简化输入：直接输入数字，相同即不动
             # 【v26 修复】确保提示信息清晰可见
-            print(f"   >>> 爱丽丝当前位于第 {alice.position} 号位 <<<")
+            facing_icon = "➡️" if alice.facing == 1 else "⬅️"
+            print(f"   >>> 爱丽丝当前位于第 {alice.position} 号位，朝向 {facing_icon} <<<")
             print(f"   >>> 请输入目标位置索引 (0-{len(battle_field)-1})，相同位置表示不动 <<<", flush=True)
             try:
                 raw_input = input()
@@ -212,16 +232,12 @@ def process_movement_phase(battle_field, enemy_team, party):
                     print(f"   >> 爱丽丝选择了坚守。")
                 else:
                     squeeze_move(battle_field, alice, target_pos)
+                    # 【v44.2 修复】补充移动成功的文字反馈，保持 UI 一致性
+                    print(f"   >> 爱丽丝 移动到了第 {alice.position} 号位！")
+                    # 【v44.2 修复】只有真正移动了才打印概览，避免重复刷屏
+                    print_battle_formation(battle_field, party)
             except ValueError:
                 print("   输入无效，爱丽丝坚守。")
-            
-            # 【v25 新增】移动后立即刷新站位概览，方便确认
-            print("\n[战场站位概览]")
-            for i, unit in enumerate(battle_field):
-                if unit.is_alive():
-                    # 【v26 修复】现在 party 参数可用了
-                    prefix = "🟢" if unit in party else "🔴"
-                    print(f"   {prefix} [{i}] {unit.name}")
                     
     # 2. 队友 (桃井、小绿、柚子) 不移动 (保持阵型)
             
@@ -307,7 +323,7 @@ def process_player_actions(battle_field, enemy_team, party):
 
 def process_monster_action(battle_field, enemy_team, party):
     """
-    【v43.1 升级】处理怪物行动
+    【v43.1/v44.2 升级】处理怪物行动
     重大改动：向怪物决策函数传递完整的战场列表 (battle_field)，以支持物理挤压移动。
     """
     for boss in enemy_team:
@@ -335,13 +351,10 @@ def sync_battle_field_positions(battle_field):
     
     # 重新分配连续的 index 给每个人，确保没有空缺或重叠
     for i, unit in enumerate(battle_field):
-        # 只有当 position 和 index 不一致时才打印提示（可选，这里为了简洁静默处理，除非你想看到调整过程）
-        # if unit.position != i:
-        #     print(f"   🔧 修正站位：{unit.name} 从 {unit.position} 调整到 {i}")
         unit.position = i
 
 def main():
-    parser = argparse.ArgumentParser(description="战斗模拟器 v43.1")
+    parser = argparse.ArgumentParser(description="战斗模拟器 v44.2")
     parser.add_argument('--level', type=int, help='指定怪物总等级')
     parser.add_argument('--monster', type=str, help='指定怪物列表')
     args = parser.parse_args()
@@ -374,11 +387,7 @@ def main():
                 unit.position = i
             
         # 【v22 新增】显示全场站位概览
-        print("\n[战场站位概览]")
-        for i, unit in enumerate(battle_field):
-            if unit.is_alive():
-                prefix = "🟢" if unit in party else "🔴"
-                print(f"   {prefix} [{i}] {unit.name}")
+        print_battle_formation(battle_field, party)
         
         # 【v22 新增】移动阶段 (传入 enemy_team 用于补位逻辑，以及 party 用于识别阵营)
         process_movement_phase(battle_field, enemy_team, party)

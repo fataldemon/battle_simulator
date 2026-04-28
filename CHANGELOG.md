@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v44.3] - 2026-04-28
+### Fixed
+- **移动算法致命修复**：彻底重写了 `utils.py` 中的 `squeeze_move` 函数。原方案使用 `pop/insert` 导致向右移动时索引偏移（常少跑一格）。新方案采用**"全员平移"**策略：移动者离开后产生空缺，中间单位向空位方向依次移位填补，最后移动者填入目标位。此方案彻底解决了坐标漂移及越界问题。
+- **移动反馈优化**：修复了移动阶段 UI 刷屏问题，现在仅在真正发生位置变化时才打印战场概览。
+
+### Changed
+- **函数签名变更**：`squeeze_move` 参数名从 `(all_units, unit_to_move, new_position)` 调整为 `(battle_field, unit_to_move, new_pos)`，语义更清晰。
+
+## [v44.2] - 2026-04-28
+### Added
+- **朝向系统 (Facing System)**：为所有单位（玩家和怪物）新增 `facing` 属性（1=面向右，-1=面向左）。玩家在战场概览中可通过 ➡️/⬅️ 箭头直观看到朝向。
+- **背刺机制 (Backstab System)**：当施法者位于目标背面时（左侧攻击面向右的敌人，或右侧攻击面向左的敌人），造成 **125%** 的伤害。该判定已集成至 `AttackEffect`, `AoEAttackEffect`, `LifestealEffect` 中。
+- **背刺视觉反馈**：触发背刺时，战斗日志会额外显示 **(背刺!)** 标签。
+
+### Changed
+- **移动逻辑联动**：移动操作现会自动更新单位的朝向（向正方向移动面向右，向负方向移动面向左），为背刺战术提供了底层支持。
+- **状态栏增强**：`print_status()` 方法现包含朝向图标显示。
+
 ## [v44.1] - 2026-04-28
 ### Fixed
 - **DotEffect 崩溃修复**：修复了 `DotEffect` 类在初始化时未保存 `icon` 属性导致的 `AttributeError` 问题。该 Bug 会导致怪物使用带有中毒、出血、腐蚀等 DoT 效果的复合技能时程序直接崩溃。

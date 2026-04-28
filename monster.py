@@ -1,11 +1,12 @@
 # monster.py
-# 战斗模拟器 v43.1 - 怪物数据与行为逻辑模块 (含能量系统与物理挤压版)
+# 战斗模拟器 v44.2 - 怪物数据与行为逻辑模块 (含能量系统与物理挤压版 + 朝向系统)
 # 核心改进：
 # 1. 【v43 新增】全员能量化：怪物现在也拥有 Energy 槽，可以积蓄能量释放大招（EX Skill）。
 # 2. 【v43 新增】高级状态处理：完美支持 DoT (持续伤害)、Blind (致盲/随机移动)、Energy Block (阻断充能)。
 # 3. 【v43 新增】致盲逻辑：致盲状态下无法发动技能，且会强制进行随机位移。
 # 4. 【v43.1 重大修复】物理挤压逻辑：怪物移动现在真正调用 squeeze_move，实现了战场上的真实推挤效果！
-# 5. 兼容旧有的智能索敌与追击逻辑。
+# 5. 【v44.2 新增】朝向系统：怪物拥有 facing 属性，移动和攻击会改变朝向
+# 6. 兼容旧有的智能索敌与追击逻辑。
 
 import random
 # 导入所有需要用到的技能效果类
@@ -53,6 +54,9 @@ class Monster:
         
         # 【v22 新增】定位系统
         self.position = 0  # 初始位置默认为 0，将在游戏初始化时重新分配
+        
+        # 【v44.2 新增】朝向系统
+        self.facing = -1  # -1=面向左(负方向), 1=面向右(正方向)。怪物初始面向左
 
         # v12 新增：状态列表 (Buff/Debuff)
         self.status_effects = []
@@ -164,7 +168,7 @@ class Monster:
         return skills
 
     def _move_randomly(self, battle_field):
-        """【v43.1 重构】致盲状态下的随机移动 (启用物理挤压)"""
+        """【v43.1/v44.2 重构】致盲状态下的随机移动 (启用物理挤压 + 朝向更新)"""
         old_pos = self.position
         move_dist = random.randint(1, 3)
         direction = random.choice([-1, 1])
@@ -186,7 +190,7 @@ class Monster:
 
     def _move_towards_target(self, party_members, battle_field, target_position=None):
         """
-        【v43.1 重构】追击逻辑：向最近的敌人移动，或者直接移动到指定位置 (启用物理挤压)
+        【v43.1/v44.2 重构】追击逻辑：向最近的敌人移动，或者直接移动到指定位置 (启用物理挤压 + 朝向更新)
         """
         alive_players = [p for p in party_members if p.is_alive()]
         if not alive_players:
@@ -213,7 +217,7 @@ class Monster:
 
     def decide_action(self, party_members, battle_field):
         """
-        怪物AI：决定本回合行动 (模块化版 + 智能索敌 + 物理挤压 v43.1 + 能量系统 v43)
+        怪物AI：决定本回合行动 (模块化版 + 智能索敌 + 物理挤压 v43.1 + 能量系统 v43 + 朝向系统 v44.2)
         :param party_members: 玩家小队成员列表 (用于索敌)
         :param battle_field: 完整的战场列表 (包含所有单位，用于物理挤压移动)
         """
@@ -433,7 +437,7 @@ class Monster:
         return self.hp > 0
 
     def print_status(self):
-        """打印状态信息：名字、血条、数值、状态图标、能量条"""
+        """打印状态信息：名字、血条、数值、状态图标、能量条、朝向"""
         bar_length = 20
         filled = int(self.hp / self.max_hp * bar_length)
         bar = "█" * filled + "░" * (bar_length - filled)
@@ -447,7 +451,10 @@ class Monster:
         # 【v43 新增】能量条显示
         energy_bar = "⚡" * self.energy + "☆" * (self.max_energy - self.energy)
         
-        print(f"   {self.name}: [{bar}] {self.hp}/{self.max_hp} [{energy_bar}]{status_str}")
+        # 【v44.2 新增】朝向显示
+        facing_icon = "➡️" if self.facing == 1 else "⬅️"
+        
+        print(f"   {self.name}: [{bar}] {self.hp}/{self.max_hp} [{energy_bar}] {facing_icon}{status_str}")
 
 # --- 数据常量 ---
 MONSTERS_DATA = [

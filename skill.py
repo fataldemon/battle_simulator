@@ -1,10 +1,9 @@
 # skill.py
-# 战斗模拟器 v44 - 技能模块化管理中心 (最终修正版)
+# 战斗模拟器 v44.2 - 技能模块化管理中心 (背刺版)
 # 核心改进：
-# 1. 移除 SequenceEffect 的冗余系统提示，保持战斗日志清爽。
-# 2. 爱丽丝的技能组全面复古：普攻还原为“光之剑，出鞘吧”，EX技能维持经典的“世界的法则即将崩坏！光哟！！！”。
-# 3. 【重要修正】爱丽丝普攻虽然改名，但**依然保留**原有的“物理斩击+致盲”双重效果，未做任何削弱！
-# 4. 【v44.1 紧急修复】修复 DotEffect 缺少 self.icon 导致的 AttributeError 崩溃问题。
+# 1. 【v44.2 新增】背刺系统：在 AttackEffect, AoEAttackEffect, LifestealEffect 中集成背刺判定。
+# 2. 当施法者位于目标背面时，造成 125% 的伤害。
+# 3. 保持其他原有逻辑不变。
 
 import random
 
@@ -23,6 +22,29 @@ class BaseSkillEffect:
 
     def execute(self, caster, targets, params):
         raise NotImplementedError
+
+def _check_backstab(caster, target):
+    """
+    检查是否触发背刺
+    规则：
+    1. 施法者在目标左侧 (pos < target.pos) 且目标面向右 (facing == 1) -> 背刺
+    2. 施法者在目标右侧 (pos > target.pos) 且目标面向左 (facing == -1) -> 背刺
+    """
+    if not hasattr(target, 'facing'):
+        return False
+    
+    # 确保 target 有 position 属性
+    if not hasattr(target, 'position') or not hasattr(caster, 'position'):
+        return False
+        
+    pos_diff = caster.position - target.position
+    
+    if pos_diff < 0 and target.facing == 1:
+        return True
+    if pos_diff > 0 and target.facing == -1:
+        return True
+        
+    return False
 
 class AttackEffect(BaseSkillEffect):
     """单体/群体攻击效果"""
@@ -55,11 +77,23 @@ class AttackEffect(BaseSkillEffect):
                 final_dmg = int(final_dmg * self.crit_mult)
                 is_crit = True
             
+            # 【v44.2 新增】背刺判定
+            is_backstab = _check_backstab(caster, target)
+            if is_backstab:
+                final_dmg = int(final_dmg * 1.25)
+            
             result = target.take_damage(final_dmg)
             
             log_msg = f"   💥 {caster.name} 对 {target.name} 造成了 {result['final_dmg']} 点伤害!"
+            suffixes = []
             if is_crit:
-                log_msg += " (暴击!)"
+                suffixes.append("暴击!")
+            if is_backstab:
+                suffixes.append("背刺!")
+                
+            if suffixes:
+                log_msg += " (" + ", ".join(suffixes) + ")"
+                
             logs.append(log_msg)
             
             if not target.is_alive():
@@ -77,9 +111,6 @@ class AoEAttackEffect(AttackEffect):
         logs = []
         if self.quote:
             logs.append(f"   🗣️ {caster.name}: 「{self.quote}」")
-        
-        # 【v44 优化】不再打印冗长的技能类型提示，直接造成伤害
-        # logs.append(f"   ✨ {caster.name} 使用了群体攻击【{self.name}】！")
         
         alive_targets = [t for t in targets if t.is_alive()]
         
@@ -101,12 +132,24 @@ class AoEAttackEffect(AttackEffect):
             if self.is_crit or random.random() < crit_rate:
                 final_dmg = int(final_dmg * self.crit_mult)
                 is_crit = True
+                
+            # 【v44.2 新增】背刺判定
+            is_backstab = _check_backstab(caster, target)
+            if is_backstab:
+                final_dmg = int(final_dmg * 1.25)
             
             result = target.take_damage(final_dmg)
             
             log_msg = f"   💥 {caster.name} 对 {target.name} 造成了 {result['final_dmg']} 点伤害!"
+            suffixes = []
             if is_crit:
-                log_msg += " (暴击!)"
+                suffixes.append("暴击!")
+            if is_backstab:
+                suffixes.append("背刺!")
+                
+            if suffixes:
+                log_msg += " (" + ", ".join(suffixes) + ")"
+            
             logs.append(log_msg)
             
             if not target.is_alive():
@@ -266,12 +309,22 @@ class LifestealEffect(BaseSkillEffect):
 
         base_dmg = caster.atk * self.multiplier
         final_dmg = int(base_dmg + random.randint(-5, 5))
+        
+        # 【v44.2 新增】背刺判定
+        is_backstab = _check_backstab(caster, target)
+        if is_backstab:
+            final_dmg = int(final_dmg * 1.25)
+            
         result = target.take_damage(final_dmg)
         
         heal_val = int(result['final_dmg'] * self.ratio)
         caster.hp = min(caster.max_hp, caster.hp + heal_val)
         
-        logs.append(f"   🩸 {caster.name} 吸取了 {result['final_dmg']} 点生命，恢复了 {heal_val} HP！")
+        log_msg = f"   🩸 {caster.name} 吸取了 {result['final_dmg']} 点生命，恢复了 {heal_val} HP！"
+        if is_backstab:
+            log_msg += " (背刺!)"
+            
+        logs.append(log_msg)
         if not target.is_alive():
             death_msg = getattr(target, 'death_msg', f"{target.name} 倒下了...")
             logs.append(f"   💀 {target.name} 倒下了... \"{death_msg}\"")
@@ -414,7 +467,7 @@ class SequenceEffect(BaseSkillEffect):
 
 
 # ==============================================================================
-# 2. 技能注册表 (Skill Registry) - v44 最终修正版
+# 2. 技能注册表 (Skill Registry) - v44.2 最终修正版
 # ==============================================================================
 
 SKILL_REGISTRY = {

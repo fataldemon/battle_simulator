@@ -1,13 +1,10 @@
 # player.py
-# 战斗模拟器 v44 - 玩家数据与行为逻辑模块 (全员能量化与高级状态版)
+# 战斗模拟器 v44.2 - 玩家数据与行为逻辑模块 (朝向系统与背刺版)
 # 核心改进：
-# 1. 【v43 新增】全员能量化：玩家也拥有 Energy 槽，可以积蓄能量释放大招。
-# 2. 【v43 新增】高级状态抗性：完美支持处理 DoT、Blind (致盲)、Energy Block (阻断充能)。
-# 3. 【v43 新增】爱丽丝 EX 技能升级：根据充能层数改变致盲效果强度和持续时间。
-# 4. 【v43 新增】爱丽丝普攻升级：增加了 30% 几率的致盲效果。
-# 5. 【v43.2 修复】移除了 EX 技能释放前的冗余手动打印，统一交由 skill 模块输出。
-# 6. 【v44 修复】修正了爱丽丝普攻的技能 ID 引用错误，确保与 skill.py 中的注册表一致。
-# 7. 【v44 紧急修复】修正了爱丽丝普攻 UI 显示的致盲概率描述错误 (从错误的 80% 修正为真实的 30%)。
+# 1. 【v44.2 新增】朝向系统：每个单位都有 facing 属性 (1=向右, -1=向左)
+# 2. 【v44.2 新增】背刺机制：攻击背对自己的敌人可获得 25% 伤害加成
+# 3. 【v44.2 新增】移动会改变朝向：向正方向移动面向右，向负方向移动面向左
+# 4. 兼容此前的能量系统、高级状态等所有功能
 
 import random
 from skill import SKILL_REGISTRY, get_skill, AttackEffect, BuffEffect, DebuffEffect, StunEffect, HealEffect, ImmobilizeEffect, SequenceEffect, BlindEffect
@@ -37,7 +34,10 @@ class Player:
         
         # 【v22 新增】定位系统
         self.position = 0  
-
+        
+        # 【v44.2 新增】朝向系统
+        self.facing = 1  # 1=面向右(正方向), -1=面向左(负方向)。玩家初始面向右
+        
         # v12 新增：状态列表 (Buff/Debuff)
         self.status_effects = []
 
@@ -112,7 +112,7 @@ class Player:
         return True
 
     def print_status(self):
-        """打印状态信息：名字、血条、数值、状态图标、能量条"""
+        """打印状态信息：名字、血条、数值、状态图标、能量条、朝向"""
         bar_length = 20
         filled = int(self.hp / self.max_hp * bar_length)
         bar = "█" * filled + "░" * (bar_length - filled)
@@ -125,7 +125,10 @@ class Player:
         # 【v43 新增】能量条显示
         energy_bar = "⚡" * self.energy + "☆" * (self.max_energy - self.energy)
         
-        print(f"   {self.name}: [{bar}] {self.hp}/{self.max_hp} [{energy_bar}]{status_str}")
+        # 【v44.2 新增】朝向显示
+        facing_icon = "➡️" if self.facing == 1 else "⬅️"
+        
+        print(f"   {self.name}: [{bar}] {self.hp}/{self.max_hp} [{energy_bar}] {facing_icon}{status_str}")
 
     def _find_valid_targets(self, enemies, skill_range):
         """
@@ -189,7 +192,8 @@ class Player:
             phys_target_str = ", ".join([f"{t.name}[{t.position}]" for t in phys_targets]) if phys_targets else "无"
 
             immobilized_note = " (🕸️ 束缚中：无法移动)" if self.is_immobilized else ""
-            print(f"\n   >> 爱丽丝，请做出你的行动！(能量: {energy_bar}){immobilized_note}")
+            facing_icon = "➡️" if self.facing == 1 else "⬅️"
+            print(f"\n   >> 爱丽丝，请做出你的行动！(能量: {energy_bar}, 朝向: {facing_icon}){immobilized_note}")
             
             # [1] 普通攻击 (现在自带致盲特效)
             print(f"   [1] {phys_skill.name} [普通攻击]")
@@ -329,11 +333,6 @@ class Player:
                 self.energy = 0
                 
                 # 创建一个专门用于 Alice EX 的 SequenceEffect 实例，以便动态注入参数
-                # 注意：由于 Registry 里的实例是固定的，我们这里手动构建一个临时的 SequenceEffect
-                # 或者直接在 params 里传参并在 SkillRegistry 里的 alice_ex 定义时处理好接收逻辑。
-                # 为了兼容性，我们直接使用之前注册的 "alice_ex"，但它本身是个 AoEAttackEffect。
-                # 所以我们需要在这里把它包装成一个 SequenceEffect 来执行。
-                
                 from skill import SequenceEffect, BlindEffect
                 sequence_ex = SequenceEffect(
                     name="世界的法则即将崩坏！光哟！！！ (强化版)",
