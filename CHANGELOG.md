@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v44.1] - 2026-04-28
+### Fixed
+- **DotEffect 崩溃修复**：修复了 `DotEffect` 类在初始化时未保存 `icon` 属性导致的 `AttributeError` 问题。该 Bug 会导致怪物使用带有中毒、出血、腐蚀等 DoT 效果的复合技能时程序直接崩溃。
+
 ## [v44.0] - 2026-04-28
 ### Added
 - **高级效果类库扩展**：新增 `DotEffect` (持续伤害)、`BlindEffect` (致盲)、`EnergyBlockEffect` (能量抽空) 以及 `SequenceEffect` (连携技能) 类，极大丰富了技能组合的可能性。
@@ -17,7 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **爱丽丝技能组最终修正**：
     - 爱丽丝普攻名称还原为 **"光之剑，出鞘吧"**，并**保留**了原有的致盲复合效果（SequenceEffect），未做任何削弱。
     - 爱丽丝 EX 技能名称**维持**经典的 **"世界的法则即将崩坏！光哟！！！"**，未做删减。
-- **战斗日志优化**：移除了 `SequenceEffect`（连携/组合技能）在触发时打印的冗余系统提示（如“发动了复合技能”），使战斗界面更加清爽直观，符合复古 RPG 风格。
+- **战斗日志优化**：移除了 `SequenceEffect`（连携/组合技能）在触发时打印的冗余系统提示（如"发动了复合技能"），使战斗界面更加清爽直观，符合复古 RPG 风格。
 
 ## [v42.0] - 2026-04-27
 ### Added
@@ -25,7 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **模块化信任标识**：新增 `skill_module_handled` 返回类型，用于标记已完成自我结算的技能动作（如治疗、Buff），防止主程序二次干预。
 
 ### Changed
-- **核心架构重构**：彻底移除了 `player.py` 中冗余的手动伤害计算、暴击判定与死亡检测代码。所有战斗数值结算统一收归至 `skill.py` 的 `execute` 方法中执行，实现了真正的“单一事实来源”（Single Source of Truth）。
+- **核心架构重构**：彻底移除了 `player.py` 中冗余的手动伤害计算、暴击判定与死亡检测代码。所有战斗数值结算统一收归至 `skill.py` 的 `execute` 方法中执行，实现了真正的"单一事实来源"（Single Source of Truth）。
 - **日志输出标准化**：全员的攻击日志格式现已完全统一（如 `💥 爱丽丝 对 铁皮傀儡 造成了 53 点伤害!`），消除了不同角色技能描述参差不齐的杂乱现象。
 
 ### Fixed
@@ -37,7 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **通用死亡检测器**：在 Player 类中增加了 `_check_death()` 静态方法，旨在通过手动调用来补全击杀后的反馈信息。
 
 ### Fixed
-- **击杀反馈缺失**：初步尝试修复了玩家普攻秒杀敌人时，系统未显示“倒下了”字样和尸体图标的问题。（注：该修补方案已被 v42 的深层重构方案取代）。
+- **击杀反馈缺失**：初步尝试修复了玩家普攻秒杀敌人时，系统未显示"倒下了"字样和尸体图标的问题。（注：该修补方案已被 v42 的深层重构方案取代）。
 
 ## [v40.0] - 2026-04-26
 ### Added

@@ -4,6 +4,7 @@
 # 1. 移除 SequenceEffect 的冗余系统提示，保持战斗日志清爽。
 # 2. 爱丽丝的技能组全面复古：普攻还原为“光之剑，出鞘吧”，EX技能维持经典的“世界的法则即将崩坏！光哟！！！”。
 # 3. 【重要修正】爱丽丝普攻虽然改名，但**依然保留**原有的“物理斩击+致盲”双重效果，未做任何削弱！
+# 4. 【v44.1 紧急修复】修复 DotEffect 缺少 self.icon 导致的 AttributeError 崩溃问题。
 
 import random
 
@@ -324,6 +325,8 @@ class DotEffect(BaseSkillEffect):
         super().__init__(name, desc, quote=quote, range=range)
         self.damage_per_tick = damage_per_tick
         self.duration = duration
+        # 【v44.1 修复】添加缺失的属性赋值
+        self.icon = icon
 
     def execute(self, caster, targets, params):
         logs = []

@@ -1,6 +1,10 @@
 # main.py
-# 战斗模拟器 v40 - 主程序 (束缚机制重构版)
-# 核心改进：在移动阶段增加对 is_immobilized 的判断，被束缚者无法移动
+# 战斗模拟器 v43.1 - 主程序 (全员能量与高级状态重构版 + 物理挤压引擎)
+# 核心改进：
+# 1. 更新版本号为 v43.1，适配全新的物理挤压技能系统与状态系统。
+# 2. 【v43 新增】移动阶段增加对 is_blinded (致盲) 状态的判断，被致盲者无法主动选择位置，只会随机乱撞。
+# 3. 【v43 紧急修复】修复了怪物移动后未同步更新战场队列顺序导致的显示与实际位置不符的 Bug。
+# 4. 【v43.1 重大升级】全面启用物理挤压引擎：怪物行动时同步获取战场全貌，实现真实的队列推挤效果。
 
 import argparse
 import random
@@ -11,7 +15,7 @@ from utils import squeeze_move
 def init_game_random():
     """初始化游戏 - 随机副本模式"""
     print("=" * 50)
-    print("📜 团队副本模拟器 v40 (束缚机制重构版)")
+    print("📜 团队副本模拟器 v43.1 (全员能量与高级状态重构版 + 物理挤压引擎)")
     print("=" * 50)
     
     low_level_pool = [m for m in MONSTERS_DATA if m['level'] <= 5]
@@ -67,7 +71,7 @@ def init_game_custom(args):
         return init_game_random()
 
     print("=" * 50)
-    print("📜 团队副本模拟器 v40 (束缚机制重构版)")
+    print("📜 团队副本模拟器 v43.1 (全员能量与高级状态重构版 + 物理挤压引擎)")
     print("=" * 50)
     
     enemy_team = []
@@ -159,8 +163,10 @@ def setup_battle_field(enemy_team, party):
 
 def process_movement_phase(battle_field, enemy_team, party):
     """
-    【v40 重构】移动阶段
-    新增：检查 is_immobilized 状态，被束缚者无法移动
+    【v43 重构】移动阶段
+    新增：
+    1. 检查 is_immobilized 状态，被束缚者无法移动。
+    2. 检查 is_blinded 状态，被致盲者无法控制移动，只能随机乱撞。
     """
     print("\n--- 🏃 移动阶段 ---")
     
@@ -172,9 +178,27 @@ def process_movement_phase(battle_field, enemy_team, party):
             break
             
     if alice and alice.is_alive():
+        # 【v43 新增】检查是否被致盲
+        if alice.is_blinded:
+            print(f"   👁️❌ 爱丽丝陷入了致盲状态！眼前一片漆黑，她只能凭着感觉乱撞！")
+            # 随机移动逻辑：原地或向左右随机移动 0-2 格
+            move_dist = random.randint(0, 2)
+            direction = random.choice([-1, 1])
+            new_pos = alice.position + (move_dist * direction)
+            
+            # 简单的边界限制 (不能跑出队列)
+            new_pos = max(0, min(len(battle_field)-1, new_pos))
+            
+            if new_pos != alice.position:
+                squeeze_move(battle_field, alice, new_pos)
+                print(f"   🏃 爱丽丝 踉跄地挤到了第 {new_pos} 号位！")
+            else:
+                print(f"   >> 爱丽丝在原地焦急地转了一圈，哪儿也没去成。")
+                
         # 【v40 新增】检查是否被束缚
-        if alice.is_immobilized:
+        elif alice.is_immobilized:
             print(f"   🕸️ 爱丽丝被蛛网束缚住了！本回合无法移动！")
+            
         else:
             # 【v25 优化】简化输入：直接输入数字，相同即不动
             # 【v26 修复】确保提示信息清晰可见
@@ -282,7 +306,10 @@ def process_player_actions(battle_field, enemy_team, party):
                 m.print_status()
 
 def process_monster_action(battle_field, enemy_team, party):
-    """处理怪物行动"""
+    """
+    【v43.1 升级】处理怪物行动
+    重大改动：向怪物决策函数传递完整的战场列表 (battle_field)，以支持物理挤压移动。
+    """
     for boss in enemy_team:
         if not boss.is_alive():
             continue
@@ -295,10 +322,26 @@ def process_monster_action(battle_field, enemy_team, party):
 
         print(f"\n--- {boss.name} 的行动 ---")
         print(f"「{boss.quote}」")
-        boss.decide_action(party)
+        # 【v43.1 核心修复】将 battle_field 传递给怪物，让它们能看到全局并进行推挤
+        boss.decide_action(party, battle_field)
+
+def sync_battle_field_positions(battle_field):
+    """
+    【v43 紧急修复】根据各单位当前的 position 属性重新排序战场队列，并校正索引。
+    解决怪物移动后未同步更新列表顺序导致的显示 Bug。
+    """
+    # 按 position 从小到大排序
+    battle_field.sort(key=lambda u: u.position)
+    
+    # 重新分配连续的 index 给每个人，确保没有空缺或重叠
+    for i, unit in enumerate(battle_field):
+        # 只有当 position 和 index 不一致时才打印提示（可选，这里为了简洁静默处理，除非你想看到调整过程）
+        # if unit.position != i:
+        #     print(f"   🔧 修正站位：{unit.name} 从 {unit.position} 调整到 {i}")
+        unit.position = i
 
 def main():
-    parser = argparse.ArgumentParser(description="战斗模拟器 v40")
+    parser = argparse.ArgumentParser(description="战斗模拟器 v43.1")
     parser.add_argument('--level', type=int, help='指定怪物总等级')
     parser.add_argument('--monster', type=str, help='指定怪物列表')
     args = parser.parse_args()
@@ -358,6 +401,10 @@ def main():
             break
             
         process_monster_action(battle_field, enemy_team, party)
+        
+        # 【v43 紧急修复】怪物行动结束后，必须同步更新战场队列顺序！
+        # 否则怪物的 position 变动不会反映在下一轮的站位图上
+        sync_battle_field_positions(battle_field)
         
         for p in party:
             if p.is_alive():
