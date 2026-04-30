@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v44.5] - 2026-05-01
+### Added
+- **装备管家深度集成 (Equipment Steward System)**: 实现了基于事件的装备特效触发引擎 (`scan_and_trigger`)，支持在回合初、攻击前后及受击时自动扫描并执行装备逻辑。
+- **战斗事件总线 (Battle Events Bus)**: 定义了 `BattleEvents` 枚举（`PRE_TURN`, `ON_ATTACK_CAST`, `ON_DAMAGE_DEALT`, `ON_DAMAGE_TAKEN`, `POST_MOVEMENT`），解耦了装备逻辑与战斗流程。
+- **历史资产库恢复 (Asset Restoration)**: 从 v3.2 历史记录中完整恢复了装备数据架构，包括：
+    - **职业核心遗物 (`CLASS_CORE_REPLICAS`)**: 如米兰板甲、元素之匣、UZQueen手柄等。
+    - **通用战场掠夺池 (`LOOT_TABLE`)**: 包含 35 件白色、25 件蓝色、12 件紫色装备。
+    - **Boss 专属掉落表 (`BOSS_DROP_TABLE`)**: 包含古代巨龙、虚空吞噬者等的传奇掉落。
+- **光之剑灵魂插槽 (Soul Slot Mechanic)**: 当角色装备【光之剑·超新星】时，动态注入 `charge_mode` 与 `ex_supernova_permission` 属性，解锁蓄能与 EX 大招权限。
+- **UI 增强**: 
+    - 游戏初始化时自动打印全队装备配置清单 (`print_equipment_summary`)。
+    - 角色状态栏增加装备栏显示 (`🎒[图标 名称]`)。
+    - 技能菜单中明确标注装备来源的特效（如“来源: 光之剑·超新星”）。
+- **文档更新**: 更新了 `Battle_Simulator_Documentation.md`，记录了装备系统重构与事件驱动架构的细节。
+
+### Fixed
+- **装备日志透明度修复**: 解决了概率型装备特效（如光之剑的致盲）在判定时机“未触发”时无任何反馈的问题。现在会明确打印 `-> 👁️✅ ... 躲过了强光！(未致盲)`。
+- **技能执行流兼容性**: 修复了因引入装备扫描钩子可能导致的技能执行中断风险，增加了异常捕获机制 (`try-except`)。
+
+### Changed
+- **主程序循环重构**: 在每回合正式开始前（移动阶段之前）插入了装备管家扫描步骤。
+- **Player 类重构**: 增加了 `equipment_list` 属性，并在初始化阶段自动挂载对应的职业核心遗物。
+
 ## [v44.3] - 2026-04-28
 ### Fixed
 - **移动算法致命修复**：彻底重写了 `utils.py` 中的 `squeeze_move` 函数。原方案使用 `pop/insert` 导致向右移动时索引偏移（常少跑一格）。新方案采用**"全员平移"**策略：移动者离开后产生空缺，中间单位向空位方向依次移位填补，最后移动者填入目标位。此方案彻底解决了坐标漂移及越界问题。

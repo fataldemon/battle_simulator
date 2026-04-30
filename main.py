@@ -1,20 +1,51 @@
 # main.py
-# 战斗模拟器 v44.2 - 主程序 (全员能量与高级状态重构版 + 物理挤压引擎 + 朝向与背刺系统)
+# 战斗模拟器 v44.5 - 主程序 (全员能量与高级状态重构版 + 物理挤压引擎 + 朝向与背刺系统 + 装备管家集成 + UI增强)
 # 核心改进：
-# 1. 【v44.2 新增】朝向系统：每个人物都有 facing 属性，移动会改变朝向。
-# 2. 【v44.2 新增】背刺机制：攻击背对自己的敌人可获得 25% 伤害加成。
-# 3. 兼容此前的能量系统、高级状态等所有功能。
+# 1. 【v44.4 新增】装备系统集成：在回合开始阶段调用装备管家，触发被动/回合初特效。
+# 2. 【v44.5 新增】装备 UI 增强：初始化时打印装备效果说明 + 状态栏醒目显示。
+# 3. 保留了此前的能量系统、高级状态、朝向系统等所有功能。
 
 import argparse
 import random
 from monster import MONSTERS_DATA, Monster
 from player import PLAYERS_DATA, Player
 from utils import squeeze_move
+# ============================================================
+# 【v44.4 新增】导入装备系统的调度器
+# ============================================================
+from equipment import scan_and_trigger, BattleEvents
+
+
+def print_equipment_summary(party):
+    """
+    【v44.5 新增】打印全队装备清单（游戏初始化时调用一次）
+    """
+    print("\n" + "=" * 50)
+    print("🎒 队伍装备配置一览")
+    print("=" * 50)
+    
+    for p in party:
+        if p.equipment_list:
+            eq_details = []
+            for eq in p.equipment_list:
+                detail = f"{eq.rarity.icon}{eq.name} | {eq.description}"
+                if eq.is_unique:
+                    detail += " ★唯一"
+                eq_details.append(detail)
+            
+            print(f"\n👤 {p.name}:")
+            for detail in eq_details:
+                print(f"   ├─ {detail}")
+        else:
+            print(f"\n👤 {p.name}: (无装备)")
+    
+    print("\n" + "-" * 50)
+
 
 def init_game_random():
     """初始化游戏 - 随机副本模式"""
     print("=" * 50)
-    print("📜 团队副本模拟器 v44.2 (朝向与背刺系统版)")
+    print("📜 团队副本模拟器 v44.5 (装备管家集成版 + UI增强)")
     print("=" * 50)
     
     low_level_pool = [m for m in MONSTERS_DATA if m['level'] <= 5]
@@ -60,7 +91,9 @@ def init_game_random():
         party.append(Player(p_data))
         
     print(f"我方小队：{', '.join([p.name for p in party])}")
-    print("-" * 50)
+    
+    # 【v44.5 新增】打印装备配置清单
+    print_equipment_summary(party)
     
     return enemy_team, party
 
@@ -70,7 +103,7 @@ def init_game_custom(args):
         return init_game_random()
 
     print("=" * 50)
-    print("📜 团队副本模拟器 v44.2 (朝向与背刺系统版)")
+    print("📜 团队副本模拟器 v44.5 (装备管家集成版 + UI增强)")
     print("=" * 50)
     
     enemy_team = []
@@ -128,7 +161,9 @@ def init_game_custom(args):
         party.append(Player(p_data))
         
     print(f"我方小队：{', '.join([p.name for p in party])}")
-    print("-" * 50)
+    
+    # 【v44.5 新增】打印装备配置清单
+    print_equipment_summary(party)
     
     return enemy_team, party
 
@@ -242,7 +277,7 @@ def process_movement_phase(battle_field, enemy_team, party):
     # 2. 队友 (桃井、小绿、柚子) 不移动 (保持阵型)
             
     # 3. 【v29 修复】移除了这里的怪物移动逻辑！
-    # 怪物现在只会在我方的“怪物行动阶段”才会移动。
+    # 怪物现在只会在我方的"怪物行动阶段"才会移动。
     # 这样可以保证玩家回合的稳定性。
     print("   >> 此时并非怪物的回合，它们正在原地虎视眈眈……")
 
@@ -354,7 +389,7 @@ def sync_battle_field_positions(battle_field):
         unit.position = i
 
 def main():
-    parser = argparse.ArgumentParser(description="战斗模拟器 v44.2")
+    parser = argparse.ArgumentParser(description="战斗模拟器 v44.5")
     parser.add_argument('--level', type=int, help='指定怪物总等级')
     parser.add_argument('--monster', type=str, help='指定怪物列表')
     args = parser.parse_args()
@@ -375,6 +410,17 @@ def main():
             
         print(f"\n--- 第 {turn} 回合 ---")
         
+        # ============================================================
+        # 【v44.4 新增】装备管家介入：回合初扫描 (Pre-Turn Scan)
+        # 触发所有带有 PRE_TURN 标签的装备特效（如每回合回血、充能等）
+        # ============================================================
+        for p in party:
+            if p.is_alive():
+                try:
+                    scan_and_trigger(p, BattleEvents.PRE_TURN, context_info=None)
+                except Exception as e:
+                    print(f"   ⚠️ 回合初装备扫描异常: {str(e)}")
+
         # 【v30 新增】战场清理与重排
         # 移除所有死亡的单位，确保队列紧凑，防止僵尸单位挡住路径
         previous_len = len(battle_field)

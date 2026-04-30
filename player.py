@@ -1,13 +1,18 @@
 # player.py
-# 战斗模拟器 v44.2 - 玩家数据与行为逻辑模块 (朝向系统与背刺版)
+# 战斗模拟器 v44.4 - 玩家数据与行为逻辑模块 (装备管家深度集成版 + 光之剑灵魂插槽)
 # 核心改进：
-# 1. 【v44.2 新增】朝向系统：每个单位都有 facing 属性 (1=向右, -1=向左)
-# 2. 【v44.2 新增】背刺机制：攻击背对自己的敌人可获得 25% 伤害加成
-# 3. 【v44.2 新增】移动会改变朝向：向正方向移动面向右，向负方向移动面向左
-# 4. 兼容此前的能量系统、高级状态等所有功能
+# 1. 【v44.4 新增】初始化时自动加载职业核心遗物。
+# 2. 【v44.4 新增】在攻击和受击节点植入 scan_and_trigger 钩子，激活装备特效。
+# 3. 【v44.4 新增】光之剑·超新星灵魂插槽：为持有者注入蓄力与 EX 大招权限。
+# 4. 【v44.5 新增】装备 UI 增强：状态栏醒目显示 + 初始化时打印效果说明。
+# 5. 保留了朝向系统与背刺版的所有功能。
 
 import random
 from skill import SKILL_REGISTRY, get_skill, AttackEffect, BuffEffect, DebuffEffect, StunEffect, HealEffect, ImmobilizeEffect, SequenceEffect, BlindEffect
+# ============================================================
+# 【v44.4 新增】导入装备系统的调度器和获取函数
+# ============================================================
+from equipment import scan_and_trigger, BattleEvents, get_class_core
 
 class Player:
     def __init__(self, data):
@@ -41,13 +46,62 @@ class Player:
         # v12 新增：状态列表 (Buff/Debuff)
         self.status_effects = []
 
+        # ============================================================
+        # 【v44.3 新增】装备系统基础
+        # ============================================================
+        self.equipment_list = [] 
+
+        # ============================================================
+        # 【v44.4 新增】自动挂载职业核心遗物
+        # 根据角色名（如爱丽丝、桃井等）匹配并装备对应的 Class Core
+        # ============================================================
+        role_map = {
+            "勇者": "alice", "编剧": "momoi", "原画": "midori", "部长": "yuzu"
+        }
+        core_role_id = role_map.get(self.role)
+        if core_role_id:
+            initial_equip = get_class_core(core_role_id)
+            if initial_equip:
+                self.equipment_list.append(initial_equip)
+                print(f"   ✨ {self.name} 觉醒了核心装备：{initial_equip.name}")
+                # 【v44.5 新增】打印装备效果说明
+                print(f"      📖 效果：{initial_equip.description}")
+                
+                # ============================================================
+                # 【v44.4 新增】光之剑·超新星灵魂插槽
+                # 当爱丽丝装备光之剑时，手动注入蓄力计数和 EX 大招权限
+                # ============================================================
+                if self.name == "爱丽丝" and initial_equip.id == "alice_sword_of_light":
+                    print(f"   ⚡ 光之剑的灵魂正在与爱丽丝同步！")
+                    print(f"   -> 注入 charge_mode (蓄力计数变量)...")
+                    print(f"   -> 注入 ex_supernova (EX 大招函数调用权限)...")
+                    
+                    # 注入蓄力计数变量
+                    self.charge_mode = 0
+                    
+                    # 注入 EX 大招函数调用权限（这里用一个标志位表示已获得权限）
+                    self.ex_supernova_permission = True
+                    
+                    print(f"   ✅ 光之剑·超新星已与爱丽丝完全连接！")
+
+
     def is_alive(self):
         return self.hp > 0
 
-    def take_damage(self, damage):
+    def take_damage(self, damage, attacker=None):
         """受到攻击时的处理 (修正版：返回字典以兼容技能模块)"""
         actual_damage = max(1, damage - self.defense)
         actual_damage = int(actual_damage * random.uniform(0.9, 1.1))
+        
+        # ============================================================
+        # 【v44.4 新增】触发受击前/受击时的装备特效 (如荆棘反伤、护盾抵消等)
+        # ============================================================
+        try:
+            if attacker:
+                scan_and_trigger(self, BattleEvents.ON_DAMAGE_TAKEN, context_info={'target': attacker})
+        except Exception as e:
+            pass # 吞掉异常防止战斗中断
+            
         self.hp -= actual_damage
         if self.hp < 0:
             self.hp = 0
@@ -112,7 +166,7 @@ class Player:
         return True
 
     def print_status(self):
-        """打印状态信息：名字、血条、数值、状态图标、能量条、朝向"""
+        """打印状态信息：名字、血条、数值、状态图标、能量条、朝向、装备栏"""
         bar_length = 20
         filled = int(self.hp / self.max_hp * bar_length)
         bar = "█" * filled + "░" * (bar_length - filled)
@@ -128,7 +182,16 @@ class Player:
         # 【v44.2 新增】朝向显示
         facing_icon = "➡️" if self.facing == 1 else "⬅️"
         
-        print(f"   {self.name}: [{bar}] {self.hp}/{self.max_hp} [{energy_bar}] {facing_icon}{status_str}")
+        # 【v44.5 增强】装备栏醒目显示
+        eq_str = ""
+        if self.equipment_list:
+            eq_icons = "".join([eq.rarity.icon for eq in self.equipment_list[:3]])
+            eq_names = ", ".join([eq.name.replace("【", "").replace("】", "") for eq in self.equipment_list[:2]])
+            if len(self.equipment_list) > 2:
+                eq_names += f" +{len(self.equipment_list)-2}"
+            eq_str = f" | 🎒[{eq_icons} {eq_names}]"
+        
+        print(f"   {self.name}: [{bar}] {self.hp}/{self.max_hp} [{energy_bar}] {facing_icon}{status_str}{eq_str}")
 
     def _find_valid_targets(self, enemies, skill_range):
         """
@@ -195,10 +258,11 @@ class Player:
             facing_icon = "➡️" if self.facing == 1 else "⬅️"
             print(f"\n   >> 爱丽丝，请做出你的行动！(能量: {energy_bar}, 朝向: {facing_icon}){immobilized_note}")
             
-            # [1] 普通攻击 (现在自带致盲特效)
+            # [1] 普通攻击
             print(f"   [1] {phys_skill.name} [普通攻击]")
-            # 【v44 紧急修复】修正这里的描述错误，从 80% 改为正确的 30%
-            print(f"       说明: {phys_skill.desc} (附带 30% 几率致盲)")
+            # 【v44.5 更新】明确标注致盲来自装备特效
+            print(f"       说明: {phys_skill.desc}")
+            print(f"       ⚡装备特效: 命中后30%几率致盲 (来源: 光之剑·超新星)")
             print(f"       射程: {phys_skill.range}")
             print(f"       可攻击目标: {phys_target_str}")
             
@@ -297,10 +361,24 @@ class Player:
             # --- 执行技能 (统一移交 control 给 skill.py) ---
             
             if skill_idx == 1:
-                # 物理攻击 (自带致盲的 SequenceEffect)
+                # ============================================================
+                # 【v44.4 新增】攻击前/后触发装备特效
+                # ============================================================
+                try:
+                    scan_and_trigger(self, BattleEvents.ON_ATTACK_CAST, {'target': potential_target})
+                except Exception as e:
+                    pass
+                    
+                # 物理攻击
                 logs = phys_skill.execute(self, [potential_target], {})
                 for log in logs:
                     print(log)
+                
+                try:
+                    scan_and_trigger(self, BattleEvents.ON_DAMAGE_DEALT, {'target': potential_target})
+                except Exception as e:
+                    pass
+                    
                 return {"type": "skill_module_handled", "msg": "Skill executed via module", "target": potential_target}
             
             elif skill_idx == 2:
@@ -308,8 +386,8 @@ class Player:
                 self.gain_energy(1)
                 print(f"   ⚡ {self.name} 喊道: \"{charge_skill.quote}\" -> 能量充填层数 -> {self.energy}")
                 return {
-                    "type": "alice_charge",
-                    "msg": f"⚡ {self.name} 喊道: \"{charge_skill.quote}\" -> 能量充填层数 -> {self.energy}"
+                    'type': 'alice_charge',
+                    'msg': f'⚡ {self.name} 喊道: "{charge_skill.quote}" -> 能量充填层数 -> {self.energy}'
                 }
             
             else: # skill_idx == 3
@@ -371,9 +449,14 @@ class Player:
                 # 检查大招射程
                 valid_super_targets = self._find_valid_targets(enemies, super_skill.range)
                 if valid_super_targets:
+                    # 【v44.4 新增】大招也接入装备触发器
+                    try: scan_and_trigger(self, BattleEvents.ON_ATTACK_CAST, {'target': target});
+                    except: pass
                     logs = super_skill.execute(self, [target], {})
                     for log in logs:
                         print(log)
+                    try: scan_and_trigger(self, BattleEvents.ON_DAMAGE_DEALT, {'target': target});
+                    except: pass
                     return {
                         "type": "super_attack",
                         "msg": "Super executed via module",
@@ -382,9 +465,13 @@ class Player:
             
             # 普通攻击 -> 统一调用
             params = {'multiplier': 1.0, 'variance': 0, 'crit_rate': self.crit_rate}
+            try: scan_and_trigger(self, BattleEvents.ON_ATTACK_CAST, {'target': target});
+            except: pass
             logs = normal_skill.execute(self, [target], params)
             for log in logs:
                 print(log)
+            try: scan_and_trigger(self, BattleEvents.ON_DAMAGE_DEALT, {'target': target});
+            except: pass
             return {
                 "type": "normal_attack",
                 "msg": "Normal attack executed via module",
@@ -407,9 +494,13 @@ class Player:
                     target = random.choice(valid_targets)
                     # 统一调用攻击
                     params = {'multiplier': 1.0, 'variance': 5, 'crit_rate': self.crit_rate}
+                    try: scan_and_trigger(self, BattleEvents.ON_ATTACK_CAST, {'target': target});
+                    except: pass
                     logs = get_skill('midori_normal').execute(self, [target], params)
                     for log in logs:
                         print(log)
+                    try: scan_and_trigger(self, BattleEvents.ON_DAMAGE_DEALT, {'target': target});
+                    except: pass
                     return {"type": "normal_attack", "msg": "Attacked via module", "target": target}
                 else:
                     return {"type": "no_target", "msg": "没有目标"}
@@ -424,9 +515,13 @@ class Player:
             if roll < 0.3:
                 target = random.choice(valid_targets)
                 params = {'multiplier': 1.0, 'variance': 5, 'crit_rate': self.crit_rate}
+                try: scan_and_trigger(self, BattleEvents.ON_ATTACK_CAST, {'target': target});
+                except: pass
                 logs = get_skill('momoi_normal').execute(self, [target], params)
                 for log in logs:
                     print(log)
+                try: scan_and_trigger(self, BattleEvents.ON_DAMAGE_DEALT, {'target': target});
+                except: pass
                 return {"type": "normal_attack", "msg": "Attacked via module", "target": target}
             elif roll < 0.6:
                 effect_type = random.choice(["attack_down", "defense_down"])

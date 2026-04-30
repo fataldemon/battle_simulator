@@ -480,15 +480,13 @@ SKILL_REGISTRY = {
     # 【v44 改动】爱丽丝的EX技能维持最初的经典名称不变
     "alice_ex": AoEAttackEffect("世界的法则即将崩坏！光哟！！！","释放出覆盖全场的巨大电磁炮", quote="世界的法则即将崩坏！光哟！！！ ", multiplier=5.91, variance=0, is_crit=True, crit_mult=2.0, range=99),
     
-    # 【v44 终极修正】爱丽丝的普攻改名为“光之剑，出鞘吧”，并恢复为包含致盲效果的复合技能
-    "alice_physical": SequenceEffect(
+    # 【v44.4 重构】爱丽丝的普攻改为纯物理斩击，致盲效果由装备【光之剑·超新星】提供
+    "alice_physical": AttackEffect(
         "光之剑，出鞘吧",
-        "挥舞光之剑发起附带致盲效果的重斩",
+        "挥舞光之剑进行物理斩击",
         quote="接招吧！光之剑！",
-        effects=[
-            AttackEffect("物理斩击", "挥动光之剑造成物理伤害", multiplier=1.0, variance=5, range=2),
-            BlindEffect("闪光致盲", "剑刃产生的强光致盲敌人", duration=1, chance=0.3, range=2)
-        ],
+        multiplier=1.0, 
+        variance=5, 
         range=2
     ), 
     
